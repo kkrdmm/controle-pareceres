@@ -1119,6 +1119,9 @@ function abrirModalPareceristas(aviso){
               <tbody>${linhas}</tbody>
             </table>
           </div>
+          <div class="modal-actions" style="justify-content:flex-start;margin-top:0.6rem;">
+            <button class="btn-ghost btn-sm" id="padronizar-categorias">Padronizar categorias existentes</button>
+          </div>
           <datalist id="lista-departamentos-edicao">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
         `}
         <div class="add-form-grid">
@@ -1140,6 +1143,20 @@ function abrirModalPareceristas(aviso){
       `;
 
       document.querySelectorAll('[data-toggle]').forEach(el=>{ el.onclick = () => { const p = state.pareceristas.find(x=>x.id===el.dataset.toggle); p.ativo=!p.ativo; saveState(); render_(); }; });
+      const btnPadronizar = document.getElementById('padronizar-categorias');
+      if(btnPadronizar){
+        btnPadronizar.onclick = () => {
+          let alterados = 0;
+          state.pareceristas.forEach(p=>{
+            const nova = normalizarCategoriaParecerista(p.categoria);
+            if(nova !== p.categoria){ p.categoria = nova; alterados++; }
+          });
+          saveState();
+          render_();
+          const erro = document.getElementById('err-novo-parecerista');
+          if(erro){ erro.style.color = 'var(--green)'; erro.textContent = alterados > 0 ? `${alterados} categoria(s) padronizada(s).` : 'Nenhuma categoria precisava de ajuste.'; }
+        };
+      }
       document.querySelectorAll('[data-del]').forEach(el=>{ el.onclick = () => { state.pareceristas = state.pareceristas.filter(x=>x.id!==el.dataset.del); saveState(); render_(); }; });
       document.querySelectorAll('[data-editar]').forEach(el=>{ el.onclick = () => { editandoId = el.dataset.editar; render_(); }; });
       document.querySelectorAll('[data-cancelar-edicao]').forEach(el=>{ el.onclick = () => { editandoId = null; render_(); }; });
@@ -1239,6 +1256,18 @@ function abrirModalPareceristas(aviso){
   desenhar();
 }
 
+function normalizarCategoriaParecerista(raw){
+  const n = normaliza(raw);
+  if(!n) return '';
+  const posdoc = ['pos-doutorando','pos doutorando','posdoc','pos-doc','pos doc','pos-doutor','pos doutor'];
+  if(posdoc.some(p => n.includes(p))) return 'Pós-doutorando';
+  if(n.includes('colaborador')) return 'Pesquisador colaborador';
+  if(n.includes('externo')) return 'Externo';
+  const docente = ['docente','professor','prof.','prof ','doutor','associado','titular','adjunto','livre-docente','livre docente'];
+  if(docente.some(p => n.includes(p))) return 'Docente';
+  return raw.trim();
+}
+
 function parseLinhaParecerista(row){
   const chaves = Object.keys(row);
   const acha = (padroes) => {
@@ -1249,7 +1278,7 @@ function parseLinhaParecerista(row){
   const nome = acha(['nome']);
   const email = acha(['mail']);
   const departamento = acha(['depart']);
-  const categoria = acha(['categ']);
+  const categoria = normalizarCategoriaParecerista(acha(['categ']));
   if(!nome) return null;
   return { id: nUSP || uid(), nome, email, departamento, categoria, ativo:true };
 }
