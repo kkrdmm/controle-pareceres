@@ -1,0 +1,1445 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Controle de Pareceres</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root{
+    --ink:#1C2B45;
+    --ink-soft:#5B6478;
+    --paper:#F3EFE0;
+    --paper-raised:#FBF8EE;
+    --line:#DCD4BE;
+    --brass:#A9752E;
+    --brass-dark:#7C551E;
+    --brass-light:#F1E3C6;
+    --red:#9C3B34;
+    --red-light:#F2E0DC;
+    --green:#52734F;
+    --green-light:#E4EADD;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Public Sans', -apple-system, sans-serif;
+    padding:2.5rem 1.5rem 4rem;
+    min-height:100vh;
+  }
+  .wrap{max-width:1040px;margin:0 auto;}
+
+  .header{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:1.5rem;
+    padding-bottom:1.75rem;
+    border-bottom:1px solid var(--line);
+    margin-bottom:1.5rem;
+  }
+  .header h1{
+    font-family:'Fraunces', serif;
+    font-weight:600;
+    font-size:2rem;
+    letter-spacing:-0.01em;
+    margin:0 0 0.35rem;
+  }
+  .header p{margin:0;color:var(--ink-soft);font-size:0.95rem;max-width:42ch;}
+  .seal{
+    width:64px;height:64px;flex-shrink:0;
+    border:1.5px solid var(--brass);
+    border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    position:relative;
+  }
+  .seal::before{content:'';position:absolute;inset:5px;border:1px solid var(--brass);border-radius:50%;}
+  .seal span{font-family:'Fraunces', serif;font-weight:600;font-size:1.3rem;color:var(--brass-dark);}
+
+  .tabs{display:flex;gap:0.4rem;margin-bottom:1.5rem;border-bottom:1px solid var(--line);}
+  .tab{
+    background:none;border:none;
+    padding:0.6rem 0.2rem;
+    margin-right:1.3rem;
+    font-size:0.92rem;
+    color:var(--ink-soft);
+    border-bottom:2px solid transparent;
+    cursor:pointer;
+  }
+  .tab.active{color:var(--ink);border-bottom-color:var(--brass);font-weight:500;}
+
+  .alert-card{
+    background:var(--brass-light);
+    border:1px solid var(--brass);
+    border-radius:10px;
+    padding:0.9rem 1.1rem;
+    margin-bottom:0.7rem;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:1rem;
+    flex-wrap:wrap;
+  }
+  .alert-card p{margin:0;font-size:0.88rem;color:var(--brass-dark);flex:1;min-width:220px;}
+  .alert-actions{display:flex;gap:0.5rem;flex-shrink:0;}
+  .flash{
+    background:var(--green-light);
+    border:1px solid var(--green);
+    color:var(--green);
+    border-radius:10px;
+    padding:0.7rem 1.1rem;
+    font-size:0.85rem;
+    margin-bottom:1rem;
+  }
+
+  .actions{display:flex;gap:0.7rem;margin-bottom:1.5rem;flex-wrap:wrap;}
+  button{font-family:inherit;cursor:pointer;}
+  .btn{border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:0.6rem 1.1rem;border-radius:7px;font-size:0.85rem;font-weight:500;}
+  .btn:hover{background:#28395a;}
+  .btn-sm{padding:0.4rem 0.75rem;font-size:0.8rem;border-radius:6px;}
+  .btn-ghost{border:1px solid var(--line);background:transparent;color:var(--ink);padding:0.6rem 1.1rem;border-radius:7px;font-size:0.85rem;}
+  .btn-ghost:hover{border-color:var(--brass);color:var(--brass-dark);}
+  .btn-ghost.btn-sm{padding:0.4rem 0.75rem;}
+
+  .filters{display:flex;gap:0.4rem;margin-bottom:1rem;flex-wrap:wrap;}
+  .filter-chip{border:1px solid var(--line);background:transparent;color:var(--ink-soft);padding:0.35rem 0.8rem;border-radius:20px;font-size:0.8rem;}
+  .filter-chip.active{border-color:var(--ink);background:var(--ink);color:var(--paper);}
+
+  .ledger{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;overflow-x:auto;}
+  table{width:100%;border-collapse:collapse;font-size:0.85rem;min-width:900px;}
+  thead th{text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.07em;color:var(--ink-soft);font-weight:500;padding:0.75rem 0.8rem;border-bottom:1px solid var(--line);white-space:nowrap;}
+  tbody td{padding:0.8rem 0.8rem;border-bottom:1px solid var(--line);vertical-align:middle;}
+  tbody tr:last-child td{border-bottom:none;}
+  tbody tr:hover{background:rgba(169,117,46,0.05);}
+  .col-num{font-family:'IBM Plex Mono', monospace;color:var(--ink-soft);white-space:nowrap;}
+  .col-title{font-weight:500;}
+  .col-title .sub{display:block;font-size:0.76rem;font-weight:400;color:var(--ink-soft);margin-top:2px;}
+  .muted{color:var(--ink-soft);}
+  .col-date{font-family:'IBM Plex Mono', monospace;font-size:0.8rem;color:var(--ink-soft);white-space:nowrap;}
+  .row-actions{display:flex;gap:0.4rem;white-space:nowrap;}
+  .icon-btn{border:1px solid var(--line);background:transparent;width:28px;height:28px;border-radius:6px;display:inline-flex;align-items:center;justify-content:center;color:var(--ink-soft);font-size:0.8rem;}
+  .icon-btn:hover{border-color:var(--ink);color:var(--ink);}
+  .icon-btn.danger:hover{border-color:var(--red);color:var(--red);}
+
+  .stamp{display:inline-block;font-family:'IBM Plex Mono', monospace;font-size:0.66rem;font-weight:500;letter-spacing:0.05em;text-transform:uppercase;padding:0.26rem 0.5rem;border:1.5px solid currentColor;border-radius:4px;transform:rotate(-2deg);white-space:nowrap;}
+  .stamp.em-dia{color:var(--green);}
+  .stamp.atrasado{color:var(--red);}
+  .stamp.concluido{color:var(--brass-dark);}
+  .badge-fase{font-size:0.7rem;color:var(--ink-soft);display:block;margin-top:2px;}
+
+  .empty-state{text-align:center;padding:3.5rem 1.5rem;color:var(--ink-soft);}
+  .empty-state p{margin:0.3rem 0 0;font-size:0.9rem;}
+  .empty-state .big{font-family:'Fraunces', serif;font-size:1.15rem;color:var(--ink);}
+
+  .overlay{position:fixed;inset:0;background:rgba(28,43,69,0.45);display:none;align-items:flex-start;justify-content:center;padding:3rem 1.5rem;z-index:10;overflow-y:auto;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--paper-raised);border:1px solid var(--line);border-radius:12px;width:100%;max-width:520px;padding:1.75rem;}
+  .modal.modal-wide{max-width:820px;}
+  .modal h2{font-family:'Fraunces', serif;font-weight:600;font-size:1.3rem;margin:0 0 1.2rem;}
+  .field{margin-bottom:1rem;}
+  .field label{display:block;font-size:0.78rem;color:var(--ink-soft);margin-bottom:0.35rem;}
+  .field input, .field select, .field textarea{width:100%;padding:0.55rem 0.7rem;border:1px solid var(--line);border-radius:6px;background:var(--paper);color:var(--ink);font-family:inherit;font-size:0.88rem;}
+  .field textarea{resize:vertical;min-height:110px;font-family:'IBM Plex Mono', monospace;font-size:0.8rem;}
+  .field input:focus, .field select:focus, .field textarea:focus{outline:2px solid var(--brass);outline-offset:1px;}
+  .field-row{display:grid;grid-template-columns:1fr 1fr;gap:0.7rem;}
+  .field-error{color:var(--red);font-size:0.78rem;margin-top:0.3rem;}
+  .field-hint{color:var(--ink-soft);font-size:0.76rem;margin-top:0.3rem;}
+  .modal-actions{display:flex;justify-content:flex-end;gap:0.6rem;margin-top:1.4rem;flex-wrap:wrap;}
+
+  .parecerista-row{display:flex;align-items:center;justify-content:space-between;gap:0.5rem;padding:0.55rem 0;border-bottom:1px solid var(--line);font-size:0.87rem;}
+  .parecerista-row:last-of-type{border-bottom:none;}
+  .parecerista-row .name{display:flex;flex-direction:column;}
+  .parecerista-row .name small{color:var(--ink-soft);font-size:0.74rem;}
+  .toggle{width:34px;height:19px;border-radius:20px;background:var(--line);border:none;position:relative;cursor:pointer;flex-shrink:0;}
+  .toggle::after{content:'';position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;background:var(--paper-raised);transition:left 0.15s ease;}
+  .toggle.on{background:var(--green);}
+  .toggle.on::after{left:17px;}
+  .add-parecerista{display:flex;gap:0.5rem;margin-top:1rem;flex-wrap:wrap;}
+  .add-parecerista input{flex:1;min-width:120px;}
+  .list-scroll{max-height:320px;overflow-y:auto;padding-right:4px;}
+
+  .mini-table-wrap{overflow-x:auto;}
+  .mini-table{width:100%;border-collapse:collapse;font-size:0.8rem;min-width:640px;}
+  .mini-table th{text-align:left;font-size:0.66rem;text-transform:uppercase;letter-spacing:0.05em;color:var(--ink-soft);font-weight:500;padding:0.4rem 0.5rem;border-bottom:1px solid var(--line);white-space:nowrap;}
+  .mini-table td{padding:0.45rem 0.5rem;border-bottom:1px solid var(--line);vertical-align:middle;}
+  .mini-table tr:last-child td{border-bottom:none;}
+  .mini-table input, .mini-table select{width:100%;padding:0.35rem 0.45rem;border:1px solid var(--line);border-radius:5px;background:var(--paper);color:var(--ink);font-family:inherit;font-size:0.78rem;}
+  .add-form-grid{display:grid;grid-template-columns:1.3fr 1fr 1.3fr 1.2fr 1fr auto;gap:0.5rem;align-items:end;margin-top:1rem;}
+  .add-form-grid .field{margin-bottom:0;}
+  .add-form-grid .field label{font-size:0.7rem;}
+  @media (max-width:700px){ .add-form-grid{grid-template-columns:1fr 1fr;} }
+
+  .modal-tabs{display:flex;gap:1rem;margin-bottom:1.1rem;border-bottom:1px solid var(--line);}
+  .modal-tab{background:none;border:none;padding:0.4rem 0;font-size:0.85rem;color:var(--ink-soft);border-bottom:2px solid transparent;cursor:pointer;}
+  .modal-tab.active{color:var(--ink);border-bottom-color:var(--brass);font-weight:500;}
+
+  .import-preview{border:1px solid var(--line);border-radius:8px;padding:0.7rem 0.9rem;margin:0.8rem 0;font-size:0.82rem;background:var(--paper);max-height:180px;overflow-y:auto;}
+  .import-preview div{padding:0.2rem 0;}
+
+  .dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;}
+  .metric-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;}
+  .metric-card .num{font-family:'Fraunces', serif;font-size:1.7rem;font-weight:600;}
+  .metric-card .lbl{font-size:0.78rem;color:var(--ink-soft);margin-top:0.2rem;}
+  .metric-card.red .num{color:var(--red);}
+  .metric-card.green .num{color:var(--green);}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;}
+  .chart-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.2rem;}
+  .chart-card h3{font-family:'Fraunces', serif;font-size:1rem;font-weight:600;margin:0 0 0.8rem;}
+  .chart-card canvas{max-height:220px;}
+  .rank-table{width:100%;border-collapse:collapse;font-size:0.83rem;}
+  .rank-table th{text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);padding:0.5rem 0.4rem;border-bottom:1px solid var(--line);}
+  .rank-table td{padding:0.55rem 0.4rem;border-bottom:1px solid var(--line);}
+  .rank-table tr:last-child td{border-bottom:none;}
+
+  .loading{text-align:center;padding:3rem;color:var(--ink-soft);font-size:0.9rem;}
+
+  .footer{
+    margin-top:2.5rem;
+    padding-top:1.25rem;
+    border-top:1px solid var(--line);
+    text-align:center;
+    font-family:'IBM Plex Mono', monospace;
+    font-size:0.74rem;
+    color:var(--ink-soft);
+    letter-spacing:0.02em;
+  }
+  .footer strong{color:var(--ink);font-weight:500;}
+  .footer span{margin:0 0.4rem;color:var(--line);}
+
+  @media (max-width:760px){
+    .dash-grid{grid-template-columns:1fr;}
+    .chart-grid{grid-template-columns:1fr;}
+    .field-row{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap" id="app">
+  <div class="loading">Carregando registro…</div>
+</div>
+
+<script>
+const STORAGE_KEY = 'controle-pareceres-estado-v2';
+
+const CATEGORIAS_PARECER = [
+  { id:'iniciacao_cientifica', label:'Iniciação científica' },
+  { id:'pos_doutorado', label:'Pós-doutorado' },
+  { id:'pesquisador_colaborador', label:'Pesquisador colaborador' },
+  { id:'colaborador_academico', label:'Colaborador acadêmico' },
+  { id:'outros', label:'Outros' }
+];
+
+const PARECERISTA_CATEGORIAS = ['Docente','Pós-doutorando','Pesquisador colaborador','Externo'];
+
+const TEMPLATE_EMAIL_PADRAO =
+`Prezado(a) {parecerista},
+
+O prazo de 14 dias para emissão do parecer referente ao processo {processo} (categoria: {categoria}) foi encerrado sem manifestação registrada.
+
+Solicito a emissão do parecer no prazo adicional de mais 7 dias (novo prazo final: {novo_prazo}).
+
+Atenciosamente,`;
+
+let state = null;
+let filtro = 'todos';
+let abaAtual = 'pareceres';
+let flashMsg = null;
+let chartInstances = {};
+
+function defaultState(){
+  return {
+    pareceristas: [],
+    pareceres: [],
+    proximoNumero: 1,
+    emailTemplate: TEMPLATE_EMAIL_PADRAO,
+    atualizadoEm: null
+  };
+}
+
+/* Armazenamento: usa window.storage quando disponível (visualização dentro do chat);
+   caso contrário (arquivo aberto direto no navegador), usa localStorage. */
+async function storageGetCompat(key){
+  if(window.storage){
+    try{ return await window.storage.get(key); }catch(e){ /* cai para localStorage */ }
+  }
+  try{
+    const v = localStorage.getItem(key);
+    return v ? { key, value: v } : null;
+  }catch(e){ return null; }
+}
+async function storageSetCompat(key, value){
+  if(window.storage){
+    try{ return await window.storage.set(key, value); }catch(e){ /* cai para localStorage */ }
+  }
+  try{ localStorage.setItem(key, value); return { key, value }; }catch(e){ return null; }
+}
+
+async function loadState(){
+  try{
+    const res = await storageGetCompat(STORAGE_KEY);
+    state = res ? JSON.parse(res.value) : defaultState();
+    if(!state.emailTemplate) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
+  }catch(e){
+    state = defaultState();
+  }
+  carregarSyncConfig();
+  render();
+  verificarBackupRemotoMaisRecente();
+}
+
+async function saveState(semSincronizar){
+  state.atualizadoEm = new Date().toISOString();
+  try{
+    await storageSetCompat(STORAGE_KEY, JSON.stringify(state));
+  }catch(e){
+    console.error('Falha ao salvar', e);
+  }
+  if(!semSincronizar) agendarSincronizacao();
+}
+
+/* ---------- Sincronização remota (GitHub Gist / VPS) ---------- */
+
+const SYNC_CONFIG_KEY = 'controle-pareceres-sync-config';
+
+function defaultSyncConfig(){
+  return {
+    github: { token:'', gistId:'', ativo:false },
+    vps: { url:'', token:'', ativo:false }
+  };
+}
+
+let syncConfig = defaultSyncConfig();
+let syncStatus = '';
+let syncTimer = null;
+let conflitoRemoto = null;
+
+function carregarSyncConfig(){
+  try{
+    const v = localStorage.getItem(SYNC_CONFIG_KEY);
+    if(v) syncConfig = Object.assign(defaultSyncConfig(), JSON.parse(v));
+  }catch(e){ syncConfig = defaultSyncConfig(); }
+}
+function salvarSyncConfig(){
+  try{ localStorage.setItem(SYNC_CONFIG_KEY, JSON.stringify(syncConfig)); }catch(e){}
+}
+
+function sincronizacaoAtiva(){
+  return (syncConfig.github.ativo && syncConfig.github.token) || (syncConfig.vps.ativo && syncConfig.vps.url);
+}
+
+function agendarSincronizacao(){
+  if(!sincronizacaoAtiva()) return;
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(executarSincronizacao, 2000);
+}
+
+async function executarSincronizacao(){
+  const tarefas = [];
+  if(syncConfig.github.ativo && syncConfig.github.token) tarefas.push(backupGitHub());
+  if(syncConfig.vps.ativo && syncConfig.vps.url) tarefas.push(backupVPS());
+  if(tarefas.length===0) return;
+  syncStatus = 'Sincronizando…';
+  atualizarIndicadorSync();
+  try{
+    await Promise.all(tarefas);
+    syncStatus = `Backup sincronizado às ${new Date().toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  }catch(e){
+    syncStatus = `Falha na sincronização: ${e.message}`;
+  }
+  atualizarIndicadorSync();
+}
+
+function atualizarIndicadorSync(){
+  const el = document.getElementById('sync-indicator');
+  if(el) el.textContent = syncStatus;
+}
+
+async function githubRequest(path, options){
+  options = options || {};
+  const headers = Object.assign({
+    'Authorization': `token ${syncConfig.github.token}`,
+    'Accept': 'application/vnd.github+json'
+  }, options.headers || {});
+  const res = await fetch(`https://api.github.com${path}`, Object.assign({}, options, { headers }));
+  if(!res.ok){
+    const txt = await res.text().catch(()=> '');
+    throw new Error(`GitHub ${res.status}: ${txt.slice(0,150)}`);
+  }
+  return res.json();
+}
+
+async function backupGitHub(){
+  const conteudo = JSON.stringify(state, null, 2);
+  const payload = { description:'Backup — Controle de Pareceres', public:false, files:{ 'controle-pareceres-backup.json': { content: conteudo } } };
+  if(syncConfig.github.gistId){
+    await githubRequest(`/gists/${syncConfig.github.gistId}`, { method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+  } else {
+    const criado = await githubRequest('/gists', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    syncConfig.github.gistId = criado.id;
+    salvarSyncConfig();
+  }
+}
+
+async function restaurarGitHub(){
+  if(!syncConfig.github.token || !syncConfig.github.gistId) throw new Error('Informe o token e o ID do Gist.');
+  const gist = await githubRequest(`/gists/${syncConfig.github.gistId}`);
+  const file = gist.files && gist.files['controle-pareceres-backup.json'];
+  if(!file) throw new Error('Este Gist não contém um backup reconhecido.');
+  state = JSON.parse(file.content);
+  await saveState(true);
+  render();
+}
+
+async function backupVPS(){
+  const res = await fetch(syncConfig.vps.url, {
+    method:'POST',
+    headers: Object.assign({ 'Content-Type':'application/json' }, syncConfig.vps.token ? { 'Authorization': `Bearer ${syncConfig.vps.token}` } : {}),
+    body: JSON.stringify(state)
+  });
+  if(!res.ok) throw new Error(`Servidor respondeu ${res.status}`);
+}
+
+async function restaurarVPS(){
+  if(!syncConfig.vps.url) throw new Error('Informe a URL do endpoint.');
+  const res = await fetch(syncConfig.vps.url, {
+    method:'GET',
+    headers: syncConfig.vps.token ? { 'Authorization': `Bearer ${syncConfig.vps.token}` } : {}
+  });
+  if(!res.ok) throw new Error(`Servidor respondeu ${res.status}`);
+  state = await res.json();
+  await saveState(true);
+  render();
+}
+
+async function verificarBackupRemotoMaisRecente(){
+  if(!(syncConfig.github.ativo && syncConfig.github.token && syncConfig.github.gistId)) return;
+  try{
+    const gist = await githubRequest(`/gists/${syncConfig.github.gistId}`);
+    const file = gist.files && gist.files['controle-pareceres-backup.json'];
+    if(!file) return;
+    const remoto = JSON.parse(file.content);
+    if(remoto.atualizadoEm && (!state.atualizadoEm || remoto.atualizadoEm > state.atualizadoEm)){
+      conflitoRemoto = remoto;
+      render();
+    }
+  }catch(e){ /* silencioso: não interrompe o uso local */ }
+}
+
+function aceitarConflitoRemoto(){
+  state = conflitoRemoto;
+  conflitoRemoto = null;
+  saveState(true);
+  render();
+}
+function descartarConflitoRemoto(){
+  conflitoRemoto = null;
+  render();
+}
+
+/* ---------- Exportar / importar arquivo local ---------- */
+
+function exportarArquivo(){
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type:'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `controle-pareceres-backup-${todayIso()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importarArquivo(file){
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    try{
+      const dados = JSON.parse(ev.target.result);
+      state = dados;
+      saveState(true);
+      flashMsg = 'Backup importado com sucesso.';
+      render();
+    }catch(e){
+      flashMsg = null;
+      alert('Não foi possível ler esse arquivo. Verifique se é um backup válido (.json).');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
+function pad(n){ return String(n).padStart(3,'0'); }
+function fmtDate(iso){ if(!iso) return '—'; const d = new Date(iso+'T00:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+function addDays(iso, days){ const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+Number(days)); return d.toISOString().slice(0,10); }
+function todayIso(){ return new Date().toISOString().slice(0,10); }
+function diffDays(iso){ const d = new Date(iso+'T00:00:00'); const t = new Date(todayIso()+'T00:00:00'); return Math.round((d-t)/86400000); }
+function normaliza(str){ return String(str||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
+function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
+function labelCategoria(p){ const c = CATEGORIAS_PARECER.find(x=>x.id===p.categoriaParecer); const base = c ? c.label : p.categoriaParecer; return p.categoriaParecer==='outros' && p.categoriaParecerOutros ? p.categoriaParecerOutros : base; }
+function numeroProcesso(p){ return `${p.processoAno}/${p.processoCodigo}`; }
+
+function parceristasAtivos(){ return state.pareceristas.filter(p=>p.ativo); }
+
+function parceristaAtualId(parecer){
+  const at = parecer.atribuicoes;
+  return at && at.length ? at[at.length-1].parceristaId : null;
+}
+
+function nomeParecerista(id){
+  const p = state.pareceristas.find(x=>x.id===id);
+  return p ? p.nome : '—';
+}
+
+function contarAtribuicoes(parceristaId){
+  let n = 0;
+  state.pareceres.forEach(p=> p.atribuicoes.forEach(a=>{ if(a.parceristaId===parceristaId) n++; }));
+  return n;
+}
+
+function ultimaAtribuicao(parceristaId){
+  let last = null;
+  state.pareceres.forEach(p=> p.atribuicoes.forEach(a=>{
+    if(a.parceristaId===parceristaId && (!last || a.data > last)) last = a.data;
+  }));
+  return last;
+}
+
+function contarAvaliacoesRecebidas(nUSP){
+  if(!nUSP) return 0;
+  return state.pareceres.filter(p=> p.autorNUSP && p.autorNUSP===nUSP).length;
+}
+
+function saldoReciprocidade(parceristaId){
+  // positivo = já avaliou mais do que foi avaliado (deve receber menos trabalho agora)
+  // negativo = foi avaliado mais do que avaliou (é a vez de retribuir)
+  return contarAtribuicoes(parceristaId) - contarAvaliacoesRecebidas(parceristaId);
+}
+
+function sugerirParecerista(departamento, excluirIds){
+  excluirIds = excluirIds || [];
+  const ativos = parceristasAtivos().filter(p=> !excluirIds.includes(p.id));
+  const foraDepto = ativos.filter(p=> normaliza(p.departamento) !== normaliza(departamento));
+  const pool = foraDepto.length ? foraDepto : ativos;
+  const withStats = pool.map(p=>({ p, saldo: saldoReciprocidade(p.id), last: ultimaAtribuicao(p.id) }));
+  withStats.sort((a,b)=>{
+    // prioriza quem foi mais avaliado do que avaliou (saldo mais baixo = deve retribuir)
+    if(a.saldo !== b.saldo) return a.saldo - b.saldo;
+    if(!a.last && b.last) return -1;
+    if(a.last && !b.last) return 1;
+    if(!a.last && !b.last) return 0;
+    return a.last < b.last ? -1 : (a.last > b.last ? 1 : 0);
+  });
+  return withStats.length ? withStats[0].p : null;
+}
+
+function departamentosConhecidos(){
+  const set = new Set();
+  state.pareceristas.forEach(p=>{ if(p.departamento) set.add(p.departamento); });
+  return Array.from(set).sort();
+}
+
+function statusParecer(p){
+  if(p.dataConclusao) return 'concluido';
+  const prazoAtivo = p.faseAtual === 1 ? p.prazoFase1 : p.prazoFase2;
+  return diffDays(prazoAtivo) < 0 ? 'atrasado' : 'em_dia';
+}
+
+/* ---------- Alertas derivados ---------- */
+
+function alertasPendentes(){
+  const alertas = [];
+  state.pareceres.forEach(p=>{
+    if(p.dataConclusao) return;
+    if(p.faseAtual === 1 && diffDays(p.prazoFase1) <= 0){
+      alertas.push({ tipo:'fase1', parecer:p });
+    } else if(p.faseAtual === 2 && diffDays(p.prazoFase2) <= 0){
+      alertas.push({ tipo:'fase2', parecer:p });
+    }
+  });
+  return alertas;
+}
+
+function resolverFase1Sim(parecerId){
+  const p = state.pareceres.find(x=>x.id===parecerId);
+  if(!p) return;
+  p.dataConclusao = todayIso();
+  p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'emitido', parceristaId: parceristaAtualId(p) });
+  flashMsg = `Parecer nº ${pad(p.numero)} marcado como concluído.`;
+  saveState(); render();
+}
+
+function resolverFase2Sim(parecerId){
+  const p = state.pareceres.find(x=>x.id===parecerId);
+  if(!p) return;
+  p.dataConclusao = todayIso();
+  p.historicoDecisoes.push({ data: todayIso(), fase:2, resultado:'emitido', parceristaId: parceristaAtualId(p) });
+  flashMsg = `Parecer nº ${pad(p.numero)} marcado como concluído.`;
+  saveState(); render();
+}
+
+function resolverFase2Nao(parecerId){
+  const p = state.pareceres.find(x=>x.id===parecerId);
+  if(!p) return;
+  const parceristaAnteriorId = parceristaAtualId(p);
+  p.historicoDecisoes.push({ data: todayIso(), fase:2, resultado:'nao_emitido', parceristaId: parceristaAnteriorId });
+  const excluidos = p.atribuicoes.map(a=>a.parceristaId);
+  if(p.autorNUSP) excluidos.push(p.autorNUSP);
+  const novo = sugerirParecerista(p.departamento, excluidos);
+  if(!novo){
+    flashMsg = `Não há outro parecerista ativo disponível para reatribuir o parecer nº ${pad(p.numero)}.`;
+    saveState(); render();
+    return;
+  }
+  p.atribuicoes.push({ parceristaId: novo.id, data: todayIso() });
+  p.dataSolicitacaoAtual = todayIso();
+  p.faseAtual = 1;
+  p.prazoFase1 = addDays(todayIso(), 14);
+  p.prazoFase2 = null;
+  p.emailEnviadoFase1 = false;
+  flashMsg = `Parecer nº ${pad(p.numero)} reatribuído de ${escapeHtml(nomeParecerista(parceristaAnteriorId))} para ${escapeHtml(novo.nome)}. Novo prazo: ${fmtDate(p.prazoFase1)}.`;
+  saveState(); render();
+}
+
+function preencherTemplate(template, parecer){
+  const parceristaId = parceristaAtualId(parecer);
+  const novoPrazo = addDays(parecer.dataSolicitacaoAtual, 21);
+  return template
+    .replaceAll('{parecerista}', nomeParecerista(parceristaId))
+    .replaceAll('{processo}', numeroProcesso(parecer))
+    .replaceAll('{categoria}', labelCategoria(parecer))
+    .replaceAll('{departamento}', parecer.departamento || '—')
+    .replaceAll('{numero_parecer}', pad(parecer.numero))
+    .replaceAll('{novo_prazo}', fmtDate(novoPrazo));
+}
+
+function abrirModalFase1Nao(parecerId){
+  const p = state.pareceres.find(x=>x.id===parecerId);
+  if(!p) return;
+  const parceristaId = parceristaAtualId(p);
+  const parecerista = state.pareceristas.find(x=>x.id===parceristaId);
+  const corpo = preencherTemplate(state.emailTemplate, p);
+  const overlay = criarOverlay();
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Avisar parecerista</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">O texto abaixo será aberto no seu aplicativo de e-mail. Ao confirmar, o prazo do parecer nº ${pad(p.numero)} passa para 21 dias no total.</p>
+      <div class="field">
+        <label>Para</label>
+        <input id="f-email-to" type="text" value="${escapeHtml(parecerista ? parecerista.email : '')}">
+      </div>
+      <div class="field">
+        <label>Assunto</label>
+        <input id="f-email-subject" type="text" value="Parecer pendente — processo ${escapeHtml(numeroProcesso(p))}">
+      </div>
+      <div class="field">
+        <label>Mensagem</label>
+        <textarea id="f-email-body" rows="8">${escapeHtml(corpo)}</textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelar">Cancelar</button>
+        <button class="btn" id="confirmar-envio">Abrir e-mail e prorrogar prazo</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('cancelar').onclick = fecharOverlay;
+  document.getElementById('confirmar-envio').onclick = () => {
+    const to = document.getElementById('f-email-to').value.trim();
+    const subject = document.getElementById('f-email-subject').value;
+    const body = document.getElementById('f-email-body').value;
+    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+    window.open(mailto, '_blank');
+
+    p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', parceristaId });
+    p.faseAtual = 2;
+    p.prazoFase2 = addDays(p.dataSolicitacaoAtual, 21);
+    p.emailEnviadoFase1 = true;
+    flashMsg = `E-mail preparado para ${escapeHtml(nomeParecerista(parceristaId))}. Novo prazo do parecer nº ${pad(p.numero)}: ${fmtDate(p.prazoFase2)}.`;
+    saveState();
+    fecharOverlay();
+    render();
+  };
+}
+
+/* ---------- Render principal ---------- */
+
+function render(){
+  const app = document.getElementById('app');
+  const alertas = alertasPendentes();
+
+  let pareceresFiltrados = state.pareceres.slice().sort((a,b)=>{
+    const pa = a.faseAtual===1 ? a.prazoFase1 : a.prazoFase2;
+    const pb = b.faseAtual===1 ? b.prazoFase1 : b.prazoFase2;
+    return (pa||'').localeCompare(pb||'');
+  });
+  if(filtro !== 'todos') pareceresFiltrados = pareceresFiltrados.filter(p=>statusParecer(p)===filtro);
+
+  app.innerHTML = `
+    <div class="header">
+      <div>
+        <h1>Controle de pareceres</h1>
+        <p>Prazos em duas fases, distribuição por departamento e acompanhamento de pendências.</p>
+      </div>
+      <div class="seal"><span>CP</span></div>
+    </div>
+
+    <div class="tabs">
+      <button class="tab ${abaAtual==='pareceres'?'active':''}" data-tab="pareceres">Pareceres</button>
+      <button class="tab ${abaAtual==='dashboard'?'active':''}" data-tab="dashboard">Dashboard</button>
+    </div>
+
+    ${flashMsg ? `<div class="flash">${flashMsg}</div>` : ''}
+
+    ${conflitoRemoto ? `
+      <div class="alert-card">
+        <p>Encontramos um backup mais recente salvo em ${new Date(conflitoRemoto.atualizadoEm).toLocaleString('pt-BR')}. Restaurar esses dados aqui?</p>
+        <div class="alert-actions">
+          <button class="btn btn-sm" id="aceitar-conflito">Restaurar</button>
+          <button class="btn-ghost btn-sm" id="descartar-conflito">Manter local</button>
+        </div>
+      </div>
+    ` : ''}
+
+    ${alertas.map(a => alertaHtml(a)).join('')}
+
+    ${abaAtual === 'pareceres' ? paginaPareceres(pareceresFiltrados) : paginaDashboard()}
+
+    <div class="footer">
+      Elaborado por <strong>Keithy Domingos</strong><span>·</span>versão 2025<span>·</span>atualização 2026
+      ${syncStatus ? `<div id="sync-indicator" style="margin-top:0.4rem;">${escapeHtml(syncStatus)}</div>` : '<div id="sync-indicator" style="margin-top:0.4rem;"></div>'}
+    </div>
+  `;
+
+  document.querySelectorAll('.tab').forEach(el=>{
+    el.onclick = () => { abaAtual = el.dataset.tab; flashMsg=null; render(); };
+  });
+
+  if(conflitoRemoto){
+    document.getElementById('aceitar-conflito').onclick = aceitarConflitoRemoto;
+    document.getElementById('descartar-conflito').onclick = descartarConflitoRemoto;
+  }
+
+  if(abaAtual === 'pareceres'){
+    document.getElementById('btn-novo').onclick = abrirModalNovo;
+    document.getElementById('btn-pareceristas').onclick = () => abrirModalPareceristas();
+    document.getElementById('btn-email-template').onclick = abrirModalTemplate;
+    document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
+    document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
+    document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
+  }
+
+  document.querySelectorAll('[data-alerta-fase1-sim]').forEach(el=>{ el.onclick = () => resolverFase1Sim(el.dataset.alertaFase1Sim); });
+  document.querySelectorAll('[data-alerta-fase1-nao]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.alertaFase1Nao); });
+  document.querySelectorAll('[data-alerta-fase2-sim]').forEach(el=>{ el.onclick = () => resolverFase2Sim(el.dataset.alertaFase2Sim); });
+  document.querySelectorAll('[data-alerta-fase2-nao]').forEach(el=>{ el.onclick = () => resolverFase2Nao(el.dataset.alertaFase2Nao); });
+
+  if(abaAtual === 'dashboard') montarGraficos();
+}
+
+function alertaHtml(a){
+  const p = a.parecer;
+  if(a.tipo === 'fase1'){
+    return `
+      <div class="alert-card">
+        <p>Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))} — o prazo de 14 dias com ${escapeHtml(nomeParecerista(parceristaAtualId(p)))} foi encerrado. O parecer foi emitido?</p>
+        <div class="alert-actions">
+          <button class="btn btn-sm" data-alerta-fase1-sim="${p.id}">Sim</button>
+          <button class="btn-ghost btn-sm" data-alerta-fase1-nao="${p.id}">Não</button>
+        </div>
+      </div>
+    `;
+  }
+  return `
+    <div class="alert-card">
+      <p>Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))} — prazo final (21 dias) com ${escapeHtml(nomeParecerista(parceristaAtualId(p)))} foi encerrado. O parecer foi emitido?</p>
+      <div class="alert-actions">
+        <button class="btn btn-sm" data-alerta-fase2-sim="${p.id}">Sim</button>
+        <button class="btn-ghost btn-sm" data-alerta-fase2-nao="${p.id}">Não, trocar parecerista</button>
+      </div>
+    </div>
+  `;
+}
+
+function paginaPareceres(lista){
+  return `
+    <div class="actions">
+      <button class="btn" id="btn-novo">+ Novo parecer</button>
+      <button class="btn-ghost" id="btn-pareceristas">Pareceristas</button>
+      <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
+      <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
+    </div>
+    <div class="filters">
+      ${filterChip('todos','Todos')}
+      ${filterChip('em_dia','Em dia')}
+      ${filterChip('atrasado','Atrasados')}
+      ${filterChip('concluido','Concluídos')}
+    </div>
+    <div class="ledger">
+      ${lista.length ? tabela(lista) : emptyState()}
+    </div>
+  `;
+}
+
+function filterChip(key,label){ return `<button class="filter-chip${filtro===key?' active':''}" data-filtro="${key}">${label}</button>`; }
+
+function tabela(lista){
+  const rows = lista.map(p=>{
+    const st = statusParecer(p);
+    const stampLabel = st==='concluido' ? 'Concluído' : (st==='atrasado' ? 'Atrasado' : 'Em dia');
+    const stampClass = st==='concluido' ? 'concluido' : (st==='atrasado' ? 'atrasado' : 'em-dia');
+    const prazoAtivo = p.faseAtual===1 ? p.prazoFase1 : p.prazoFase2;
+    const faseLabel = p.dataConclusao ? '' : `<span class="badge-fase">${p.faseAtual===1?'1ª fase (14 dias)':'2ª fase (prazo final)'}</span>`;
+    return `
+      <tr>
+        <td class="col-num">Nº ${pad(p.numero)}</td>
+        <td class="col-title">${escapeHtml(numeroProcesso(p))}<span class="sub">${escapeHtml(labelCategoria(p))}${p.autorNUSP ? ' · autor '+escapeHtml(p.autorNUSP) : ''}</span></td>
+        <td class="muted">${escapeHtml(p.departamento||'—')}</td>
+        <td>${escapeHtml(nomeParecerista(parceristaAtualId(p)))}</td>
+        <td class="col-date">${fmtDate(p.dataConclusao ? p.dataConclusao : prazoAtivo)}${faseLabel}</td>
+        <td><span class="stamp ${stampClass}">${stampLabel}</span></td>
+        <td>
+          <div class="row-actions">
+            <button class="icon-btn danger" data-excluir="${p.id}" title="Excluir" aria-label="Excluir">✕</button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <table>
+      <thead><tr>
+        <th>Registro</th><th>Processo</th><th>Departamento</th><th>Parecerista</th><th>Prazo / conclusão</th><th>Status</th><th>Ações</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function emptyState(){
+  return `<div class="empty-state"><p class="big">Nenhum parecer registrado</p><p>Clique em "Novo parecer" para abrir o primeiro registro.</p></div>`;
+}
+
+function excluirParecer(id){
+  state.pareceres = state.pareceres.filter(x=>x.id!==id);
+  saveState(); render();
+}
+
+/* ---------- Dashboard ---------- */
+
+function paginaDashboard(){
+  const total = state.pareceres.length;
+  const concluidos = state.pareceres.filter(p=>p.dataConclusao).length;
+  const atrasados = state.pareceres.filter(p=>!p.dataConclusao && statusParecer(p)==='atrasado').length;
+  const naoEmitidos = {};
+  state.pareceres.forEach(p=> p.historicoDecisoes.forEach(h=>{
+    if(h.resultado==='nao_emitido'){
+      naoEmitidos[h.parceristaId] = naoEmitidos[h.parceristaId] || { fase1:0, fase2:0 };
+      if(h.fase===1) naoEmitidos[h.parceristaId].fase1++;
+      else naoEmitidos[h.parceristaId].fase2++;
+    }
+  }));
+  const ranking = Object.keys(naoEmitidos).map(id=>({
+    id, nome: nomeParecerista(id), departamento: (state.pareceristas.find(p=>p.id===id)||{}).departamento || '—',
+    ...naoEmitidos[id]
+  })).sort((a,b)=> (b.fase1+b.fase2) - (a.fase1+a.fase2));
+
+  const reciprocidade = state.pareceristas
+    .map(p=>({ nome:p.nome, departamento:p.departamento||'—', deu: contarAtribuicoes(p.id), recebeu: contarAvaliacoesRecebidas(p.id), saldo: saldoReciprocidade(p.id) }))
+    .filter(r=> r.deu>0 || r.recebeu>0)
+    .sort((a,b)=> a.saldo - b.saldo);
+
+  return `
+    <div class="dash-grid">
+      <div class="metric-card"><div class="num">${total}</div><div class="lbl">Pareceres registrados</div></div>
+      <div class="metric-card green"><div class="num">${concluidos}</div><div class="lbl">Concluídos</div></div>
+      <div class="metric-card red"><div class="num">${atrasados}</div><div class="lbl">Em atraso agora</div></div>
+    </div>
+    <div class="chart-grid">
+      <div class="chart-card"><h3>Situação atual</h3><canvas id="chart-status"></canvas></div>
+      <div class="chart-card"><h3>Pareceres por categoria</h3><canvas id="chart-categoria"></canvas></div>
+      <div class="chart-card"><h3>Pareceres por departamento</h3><canvas id="chart-departamento"></canvas></div>
+      <div class="chart-card">
+        <h3>Pareceristas que não emitiram no prazo</h3>
+        ${ranking.length ? `
+          <table class="rank-table">
+            <thead><tr><th>Parecerista</th><th>Depto.</th><th>1º prazo perdido</th><th>Trocado no prazo final</th></tr></thead>
+            <tbody>${ranking.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.fase1}</td><td>${r.fase2}</td></tr>`).join('')}</tbody>
+          </table>
+        ` : `<p class="field-hint">Nenhuma pendência registrada até o momento.</p>`}
+      </div>
+      <div class="chart-card">
+        <h3>Balanço de reciprocidade</h3>
+        <p class="field-hint" style="margin-top:-0.4rem;">Quantas vezes cada um avaliou (deu) versus foi avaliado (recebeu), pelo nº USP do autor. Saldo negativo indica quem está "devendo" um parecer.</p>
+        ${reciprocidade.length ? `
+          <table class="rank-table">
+            <thead><tr><th>Parecerista</th><th>Depto.</th><th>Avaliou</th><th>Foi avaliado</th><th>Saldo</th></tr></thead>
+            <tbody>${reciprocidade.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.deu}</td><td>${r.recebeu}</td><td style="color:${r.saldo<0?'var(--red)':(r.saldo>0?'var(--green)':'var(--ink-soft)')}">${r.saldo>0?'+':''}${r.saldo}</td></tr>`).join('')}</tbody>
+          </table>
+        ` : `<p class="field-hint">Sem dados suficientes ainda — o nº USP do autor avaliado precisa ser preenchido nos pareceres para calcular o saldo.</p>`}
+      </div>
+    </div>
+  `;
+}
+
+function montarGraficos(){
+  Object.values(chartInstances).forEach(c=>c && c.destroy());
+  chartInstances = {};
+
+  const st = { em_dia:0, atrasado:0, concluido:0 };
+  state.pareceres.forEach(p=> st[statusParecer(p)]++);
+  const ctxStatus = document.getElementById('chart-status');
+  if(ctxStatus){
+    chartInstances.status = new Chart(ctxStatus, {
+      type:'doughnut',
+      data:{ labels:['Em dia','Atrasado','Concluído'], datasets:[{ data:[st.em_dia, st.atrasado, st.concluido], backgroundColor:['#52734F','#9C3B34','#A9752E'] }] },
+      options:{ plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } } }
+    });
+  }
+
+  const porCategoria = {};
+  state.pareceres.forEach(p=>{ const l = labelCategoria(p); porCategoria[l] = (porCategoria[l]||0)+1; });
+  const ctxCat = document.getElementById('chart-categoria');
+  if(ctxCat){
+    chartInstances.categoria = new Chart(ctxCat, {
+      type:'bar',
+      data:{ labels:Object.keys(porCategoria), datasets:[{ data:Object.values(porCategoria), backgroundColor:'#A9752E' }] },
+      options:{ plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+    });
+  }
+
+  const porDepto = {};
+  state.pareceres.forEach(p=>{ const l = p.departamento || 'Não informado'; porDepto[l] = (porDepto[l]||0)+1; });
+  const ctxDepto = document.getElementById('chart-departamento');
+  if(ctxDepto){
+    chartInstances.departamento = new Chart(ctxDepto, {
+      type:'bar',
+      data:{ labels:Object.keys(porDepto), datasets:[{ data:Object.values(porDepto), backgroundColor:'#1C2B45' }] },
+      options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
+    });
+  }
+}
+
+/* ---------- Modal: novo parecer ---------- */
+
+function abrirModalNovo(){
+  if(parceristasAtivos().length === 0){
+    abrirModalPareceristas('Cadastre ao menos um parecerista ativo antes de registrar um parecer.');
+    return;
+  }
+  const overlay = criarOverlay();
+  const departamentos = departamentosConhecidos();
+
+  const montarOpcoesParecerista = (departamento, autorNUSP) => {
+    const excluir = autorNUSP ? [autorNUSP] : [];
+    const ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
+    const sugerido = departamento ? sugerirParecerista(departamento, excluir) : null;
+    return ativos.map(p=>{
+      const mesmoDepto = departamento && normaliza(p.departamento)===normaliza(departamento);
+      const tag = sugerido && p.id===sugerido.id ? ' — sugerido' : (mesmoDepto ? ' — mesmo departamento' : '');
+      return `<option value="${p.id}" ${sugerido && p.id===sugerido.id ? 'selected':''}>${escapeHtml(p.nome)}${tag}</option>`;
+    }).join('');
+  };
+
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Novo parecer</h2>
+      <div class="field-row">
+        <div class="field">
+          <label for="f-ano">Ano do processo</label>
+          <input id="f-ano" type="text" placeholder="2026" maxlength="4">
+        </div>
+        <div class="field">
+          <label for="f-codigo">Código do processo</label>
+          <input id="f-codigo" type="text" placeholder="000123">
+        </div>
+      </div>
+      <div class="field">
+        <label for="f-autor-nusp">Nº USP do autor avaliado</label>
+        <input id="f-autor-nusp" type="text" placeholder="Ex: 1234567">
+        <p class="field-hint">Usado para não sugerir esse mesmo parecerista para avaliar seu próprio trabalho e para equilibrar quem já avaliou versus quem já foi avaliado.</p>
+      </div>
+      <div class="field">
+        <label for="f-categoria">Categoria do parecer</label>
+        <select id="f-categoria">
+          ${CATEGORIAS_PARECER.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field" id="campo-outros" style="display:none;">
+        <label for="f-categoria-outros">Especifique a categoria</label>
+        <input id="f-categoria-outros" type="text" placeholder="Descreva a categoria">
+      </div>
+      <div class="field">
+        <label for="f-departamento">Departamento vinculado à atividade</label>
+        <input id="f-departamento" type="text" list="lista-departamentos" placeholder="Ex: Departamento de Física">
+        <datalist id="lista-departamentos">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+      </div>
+      <div class="field">
+        <label for="f-parecerista">Parecerista (sugestão automática por departamento, reciprocidade e rotatividade)</label>
+        <select id="f-parecerista">${montarOpcoesParecerista('', '')}</select>
+      </div>
+      <div class="field-error" id="err-msg"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelar">Cancelar</button>
+        <button class="btn" id="salvar">Registrar</button>
+      </div>
+    </div>
+  `;
+
+  const atualizarSugestao = () => {
+    const departamento = document.getElementById('f-departamento').value;
+    const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
+    document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP);
+  };
+  document.getElementById('f-categoria').onchange = (e) => {
+    document.getElementById('campo-outros').style.display = e.target.value==='outros' ? 'block' : 'none';
+  };
+  document.getElementById('f-departamento').oninput = atualizarSugestao;
+  document.getElementById('f-autor-nusp').oninput = atualizarSugestao;
+  document.getElementById('cancelar').onclick = fecharOverlay;
+  document.getElementById('salvar').onclick = () => {
+    const ano = document.getElementById('f-ano').value.trim();
+    const codigo = document.getElementById('f-codigo').value.trim();
+    const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
+    const categoria = document.getElementById('f-categoria').value;
+    const categoriaOutros = document.getElementById('f-categoria-outros').value.trim();
+    const departamento = document.getElementById('f-departamento').value.trim();
+    const parceristaId = document.getElementById('f-parecerista').value;
+
+    if(!ano || !codigo){ document.getElementById('err-msg').textContent = 'Informe o ano e o código do processo.'; return; }
+    if(categoria==='outros' && !categoriaOutros){ document.getElementById('err-msg').textContent = 'Descreva a categoria do parecer.'; return; }
+    if(!departamento){ document.getElementById('err-msg').textContent = 'Informe o departamento vinculado.'; return; }
+    if(!parceristaId){ document.getElementById('err-msg').textContent = 'Selecione um parecerista.'; return; }
+    if(autorNUSP && parceristaId===autorNUSP){ document.getElementById('err-msg').textContent = 'O parecerista não pode ser o mesmo nº USP do autor avaliado.'; return; }
+
+    const hoje = todayIso();
+    const novo = {
+      id: uid(),
+      numero: state.proximoNumero,
+      processoAno: ano,
+      processoCodigo: codigo,
+      autorNUSP,
+      categoriaParecer: categoria,
+      categoriaParecerOutros: categoria==='outros' ? categoriaOutros : '',
+      departamento,
+      atribuicoes: [{ parceristaId, data: hoje }],
+      dataSolicitacaoAtual: hoje,
+      faseAtual: 1,
+      prazoFase1: addDays(hoje, 14),
+      prazoFase2: null,
+      emailEnviadoFase1: false,
+      dataConclusao: null,
+      historicoDecisoes: []
+    };
+    state.pareceres.push(novo);
+    state.proximoNumero += 1;
+    saveState();
+    fecharOverlay();
+    flashMsg = `Parecer nº ${pad(novo.numero)} registrado. Prazo inicial: ${fmtDate(novo.prazoFase1)}.`;
+    render();
+  };
+}
+
+/* ---------- Modal: pareceristas (gerenciar + importar) ---------- */
+
+function abrirModalPareceristas(aviso){
+  const overlay = criarOverlay();
+  let subaba = 'lista';
+
+  const desenhar = () => {
+    overlay.innerHTML = `
+      <div class="modal modal-wide">
+        <h2>Pareceristas</h2>
+        ${aviso ? `<p class="field-error" style="margin-bottom:1rem;">${escapeHtml(aviso)}</p>` : ''}
+        <div class="modal-tabs">
+          <button class="modal-tab ${subaba==='lista'?'active':''}" data-msub="lista">Lista</button>
+          <button class="modal-tab ${subaba==='importar'?'active':''}" data-msub="importar">Importar planilha</button>
+        </div>
+        <div id="msub-conteudo"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-pareceristas">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.querySelectorAll('.modal-tab').forEach(el=>{ el.onclick = () => { subaba = el.dataset.msub; desenhar(); }; });
+    document.getElementById('fechar-pareceristas').onclick = () => { fecharOverlay(); render(); };
+    if(subaba==='lista') desenharLista(); else desenharImportar();
+  };
+
+  const desenharLista = () => {
+    const cont = document.getElementById('msub-conteudo');
+    let editandoId = null;
+
+    const render_ = () => {
+      const departamentos = departamentosConhecidos();
+      const linhas = state.pareceristas.map(p=>{
+        if(editandoId === p.id){
+          return `
+            <tr>
+              <td><input class="pe-nome" value="${escapeHtml(p.nome)}"></td>
+              <td><input value="${escapeHtml(p.id)}" disabled title="O nº USP não pode ser alterado depois de cadastrado"></td>
+              <td><input class="pe-email" value="${escapeHtml(p.email)}"></td>
+              <td><input class="pe-depto" value="${escapeHtml(p.departamento)}" list="lista-departamentos-edicao"></td>
+              <td>
+                <select class="pe-cat">
+                  <option value="">—</option>
+                  ${PARECERISTA_CATEGORIAS.map(c=>`<option value="${c}" ${p.categoria===c?'selected':''}>${c}</option>`).join('')}
+                </select>
+              </td>
+              <td>
+                <div class="row-actions">
+                  <button class="icon-btn" data-salvar-edicao="${p.id}" aria-label="Salvar" title="Salvar">✓</button>
+                  <button class="icon-btn" data-cancelar-edicao aria-label="Cancelar" title="Cancelar">✕</button>
+                </div>
+              </td>
+            </tr>
+          `;
+        }
+        return `
+          <tr>
+            <td>${escapeHtml(p.nome)}</td>
+            <td class="muted">${escapeHtml(p.id)}</td>
+            <td class="muted">${escapeHtml(p.email||'—')}</td>
+            <td class="muted">${escapeHtml(p.departamento||'—')}</td>
+            <td class="muted">${escapeHtml(p.categoria||'—')}</td>
+            <td>
+              <div class="row-actions">
+                <button class="toggle${p.ativo?' on':''}" data-toggle="${p.id}" aria-label="Ativar ou desativar ${escapeHtml(p.nome)}"></button>
+                <button class="icon-btn" data-editar="${p.id}" aria-label="Editar ${escapeHtml(p.nome)}" title="Editar">✎</button>
+                <button class="icon-btn danger" data-del="${p.id}" aria-label="Remover ${escapeHtml(p.nome)}" title="Remover">✕</button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      cont.innerHTML = `
+        ${state.pareceristas.length===0 ? `<p class="field-hint">Nenhum parecerista cadastrado ainda. Use a aba "Importar planilha" ou o formulário abaixo.</p>` : `
+          <div class="list-scroll mini-table-wrap">
+            <table class="mini-table">
+              <thead><tr><th>Nome</th><th>Nº USP</th><th>E-mail</th><th>Departamento</th><th>Categoria</th><th>Ações</th></tr></thead>
+              <tbody>${linhas}</tbody>
+            </table>
+          </div>
+          <datalist id="lista-departamentos-edicao">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+        `}
+        <div class="add-form-grid">
+          <div class="field"><label>Nome completo</label><input id="f-novo-nome" type="text" placeholder="Nome completo"></div>
+          <div class="field"><label>Nº USP</label><input id="f-novo-nusp" type="text" placeholder="opcional"></div>
+          <div class="field"><label>E-mail</label><input id="f-novo-email" type="text" placeholder="nome@usp.br"></div>
+          <div class="field"><label>Departamento</label><input id="f-novo-depto" type="text" list="lista-departamentos-novo" placeholder="Departamento"></div>
+          <div class="field">
+            <label>Categoria</label>
+            <select id="f-novo-cat">
+              <option value="">—</option>
+              ${PARECERISTA_CATEGORIAS.map(c=>`<option value="${c}">${c}</option>`).join('')}
+            </select>
+          </div>
+          <button class="btn btn-sm" id="add-parecerista">Adicionar</button>
+        </div>
+        <datalist id="lista-departamentos-novo">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+        <div class="field-error" id="err-novo-parecerista"></div>
+      `;
+
+      document.querySelectorAll('[data-toggle]').forEach(el=>{ el.onclick = () => { const p = state.pareceristas.find(x=>x.id===el.dataset.toggle); p.ativo=!p.ativo; saveState(); render_(); }; });
+      document.querySelectorAll('[data-del]').forEach(el=>{ el.onclick = () => { state.pareceristas = state.pareceristas.filter(x=>x.id!==el.dataset.del); saveState(); render_(); }; });
+      document.querySelectorAll('[data-editar]').forEach(el=>{ el.onclick = () => { editandoId = el.dataset.editar; render_(); }; });
+      document.querySelectorAll('[data-cancelar-edicao]').forEach(el=>{ el.onclick = () => { editandoId = null; render_(); }; });
+      document.querySelectorAll('[data-salvar-edicao]').forEach(el=>{
+        el.onclick = () => {
+          const p = state.pareceristas.find(x=>x.id===el.dataset.salvarEdicao);
+          const linha = el.closest('tr');
+          const nome = linha.querySelector('.pe-nome').value.trim();
+          if(!nome) return;
+          p.nome = nome;
+          p.email = linha.querySelector('.pe-email').value.trim();
+          p.departamento = linha.querySelector('.pe-depto').value.trim();
+          p.categoria = linha.querySelector('.pe-cat').value;
+          editandoId = null;
+          saveState(); render_();
+        };
+      });
+      document.getElementById('add-parecerista').onclick = () => {
+        const nome = document.getElementById('f-novo-nome').value.trim();
+        const nusp = document.getElementById('f-novo-nusp').value.trim();
+        const email = document.getElementById('f-novo-email').value.trim();
+        const departamento = document.getElementById('f-novo-depto').value.trim();
+        const categoria = document.getElementById('f-novo-cat').value;
+        const erro = document.getElementById('err-novo-parecerista');
+        erro.textContent = '';
+        if(!nome){ erro.textContent = 'Informe o nome completo.'; return; }
+        if(nusp && state.pareceristas.some(x=>x.id===nusp)){ erro.textContent = 'Já existe um parecerista cadastrado com esse nº USP.'; return; }
+        state.pareceristas.push({ id: nusp || uid(), nome, email, departamento, categoria, ativo:true });
+        saveState(); render_();
+      };
+    };
+    render_();
+  };
+
+
+  const desenharImportar = () => {
+    const cont = document.getElementById('msub-conteudo');
+    cont.innerHTML = `
+      <p class="field-hint" style="margin-bottom:0.8rem;">A planilha deve conter colunas com nº USP, nome completo, e-mail, departamento de lotação e categoria (docente, pós-doutorando, pesquisador colaborador ou externo). A ordem das colunas não importa.</p>
+      <div class="field"><input id="f-arquivo" type="file" accept=".xlsx,.xls,.csv"></div>
+      <div id="importar-preview"></div>
+    `;
+    document.getElementById('f-arquivo').onchange = (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try{
+          const data = new Uint8Array(ev.target.result);
+          const wb = XLSX.read(data, { type:'array' });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+          const parsed = rows.map(r => parseLinhaParecerista(r)).filter(Boolean);
+          mostrarPreviewImportacao(parsed);
+        }catch(err){
+          document.getElementById('importar-preview').innerHTML = `<p class="field-error">Não foi possível ler o arquivo. Verifique se é um .xlsx, .xls ou .csv válido.</p>`;
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  };
+
+  const mostrarPreviewImportacao = (parsed) => {
+    const box = document.getElementById('importar-preview');
+    if(parsed.length === 0){
+      box.innerHTML = `<p class="field-error">Nenhuma linha reconhecida. Confira se a planilha tem cabeçalhos como "nº USP", "nome", "e-mail", "departamento" e "categoria".</p>`;
+      return;
+    }
+    box.innerHTML = `
+      <div class="import-preview">
+        <strong>${parsed.length} parecerista(s) encontrado(s):</strong>
+        ${parsed.slice(0,8).map(p=>`<div>${escapeHtml(p.nome)} — ${escapeHtml(p.departamento||'sem depto.')}</div>`).join('')}
+        ${parsed.length>8 ? `<div class="muted">e mais ${parsed.length-8}…</div>` : ''}
+      </div>
+      <button class="btn" id="confirmar-importacao">Importar ${parsed.length} parecerista(s)</button>
+    `;
+    document.getElementById('confirmar-importacao').onclick = () => {
+      let novos = 0, atualizados = 0;
+      parsed.forEach(p=>{
+        const existente = state.pareceristas.find(x=>x.id===p.id);
+        if(existente){
+          Object.assign(existente, p, { ativo: existente.ativo });
+          atualizados++;
+        } else {
+          state.pareceristas.push(p);
+          novos++;
+        }
+      });
+      saveState();
+      aviso = null;
+      subaba = 'lista';
+      flashMsg = `Importação concluída: ${novos} novo(s), ${atualizados} atualizado(s).`;
+      desenhar();
+    };
+  };
+
+  desenhar();
+}
+
+function parseLinhaParecerista(row){
+  const chaves = Object.keys(row);
+  const acha = (padroes) => {
+    const k = chaves.find(c => padroes.some(p => normaliza(c).includes(p)));
+    return k ? String(row[k]).trim() : '';
+  };
+  const nUSP = acha(['nusp','n usp','usp','matricula','id']);
+  const nome = acha(['nome']);
+  const email = acha(['mail']);
+  const departamento = acha(['depart']);
+  const categoria = acha(['categ']);
+  if(!nome) return null;
+  return { id: nUSP || uid(), nome, email, departamento, categoria, ativo:true };
+}
+
+/* ---------- Modal: backup e sincronização ---------- */
+
+function abrirModalSincronizacao(){
+  const overlay = criarOverlay();
+  let subaba = 'github';
+
+  const desenhar = () => {
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Backup e sincronização</h2>
+        <div class="modal-tabs">
+          <button class="modal-tab ${subaba==='github'?'active':''}" data-ssub="github">GitHub</button>
+          <button class="modal-tab ${subaba==='vps'?'active':''}" data-ssub="vps">VPS / servidor próprio</button>
+          <button class="modal-tab ${subaba==='arquivo'?'active':''}" data-ssub="arquivo">Arquivo local</button>
+        </div>
+        <div id="ssub-conteudo"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-sync">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.querySelectorAll('.modal-tab').forEach(el=>{ el.onclick = () => { subaba = el.dataset.ssub; desenhar(); }; });
+    document.getElementById('fechar-sync').onclick = () => { fecharOverlay(); render(); };
+    if(subaba==='github') desenharGithub();
+    else if(subaba==='vps') desenharVps();
+    else desenharArquivo();
+  };
+
+  const desenharGithub = () => {
+    const cont = document.getElementById('ssub-conteudo');
+    cont.innerHTML = `
+      <p class="field-hint" style="margin-bottom:0.8rem;">
+        Cria um Gist privado na sua conta do GitHub e mantém o backup atualizado automaticamente a cada alteração.
+        Gere um token em <strong>github.com → Settings → Developer settings → Personal access tokens (fine-grained)</strong>, com permissão apenas de "Gists". O token fica salvo somente neste navegador.
+      </p>
+      <div class="field"><label for="s-gh-token">Personal access token</label><input id="s-gh-token" type="password" value="${escapeHtml(syncConfig.github.token)}" placeholder="ghp_..."></div>
+      <div class="field"><label for="s-gh-gist">ID do Gist (deixe em branco para criar um novo no primeiro backup)</label><input id="s-gh-gist" type="text" value="${escapeHtml(syncConfig.github.gistId)}" placeholder="ex: 8f3a2b1c..."></div>
+      <div class="field" style="display:flex;align-items:center;gap:0.6rem;">
+        <button class="toggle${syncConfig.github.ativo?' on':''}" id="s-gh-ativo"></button>
+        <label style="margin:0;">Sincronizar automaticamente a cada alteração</label>
+      </div>
+      <div class="field-error" id="s-gh-erro"></div>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn-ghost btn-sm" id="s-gh-salvar">Salvar configuração</button>
+        <button class="btn-ghost btn-sm" id="s-gh-agora">Fazer backup agora</button>
+        <button class="btn-ghost btn-sm" id="s-gh-restaurar">Restaurar deste Gist</button>
+      </div>
+    `;
+    document.getElementById('s-gh-ativo').onclick = (e) => { e.target.classList.toggle('on'); };
+    const capturar = () => {
+      syncConfig.github.token = document.getElementById('s-gh-token').value.trim();
+      syncConfig.github.gistId = document.getElementById('s-gh-gist').value.trim();
+      syncConfig.github.ativo = document.getElementById('s-gh-ativo').classList.contains('on');
+      salvarSyncConfig();
+    };
+    document.getElementById('s-gh-salvar').onclick = () => { capturar(); document.getElementById('s-gh-erro').style.color='var(--green)'; document.getElementById('s-gh-erro').textContent='Configuração salva.'; };
+    document.getElementById('s-gh-agora').onclick = async () => {
+      capturar();
+      document.getElementById('s-gh-erro').style.color='var(--ink-soft)';
+      document.getElementById('s-gh-erro').textContent = 'Enviando backup…';
+      try{ await backupGitHub(); document.getElementById('s-gh-gist').value = syncConfig.github.gistId; document.getElementById('s-gh-erro').style.color='var(--green)'; document.getElementById('s-gh-erro').textContent = 'Backup enviado com sucesso.'; }
+      catch(e){ document.getElementById('s-gh-erro').style.color='var(--red)'; document.getElementById('s-gh-erro').textContent = e.message; }
+    };
+    document.getElementById('s-gh-restaurar').onclick = async () => {
+      capturar();
+      document.getElementById('s-gh-erro').style.color='var(--ink-soft)';
+      document.getElementById('s-gh-erro').textContent = 'Restaurando…';
+      try{ await restaurarGitHub(); flashMsg = 'Dados restaurados do GitHub.'; fecharOverlay(); render(); }
+      catch(e){ document.getElementById('s-gh-erro').style.color='var(--red)'; document.getElementById('s-gh-erro').textContent = e.message; }
+    };
+  };
+
+  const desenharVps = () => {
+    const cont = document.getElementById('ssub-conteudo');
+    cont.innerHTML = `
+      <p class="field-hint" style="margin-bottom:0.8rem;">
+        Envia o backup para um endpoint no seu servidor. Ele precisa aceitar <strong>POST</strong> (recebe o JSON completo) e <strong>GET</strong> (devolve o último JSON salvo) na mesma URL.
+      </p>
+      <div class="field"><label for="s-vps-url">URL do endpoint</label><input id="s-vps-url" type="text" value="${escapeHtml(syncConfig.vps.url)}" placeholder="https://seu-servidor.com/backup"></div>
+      <div class="field"><label for="s-vps-token">Token de autenticação (opcional, enviado como Bearer)</label><input id="s-vps-token" type="password" value="${escapeHtml(syncConfig.vps.token)}"></div>
+      <div class="field" style="display:flex;align-items:center;gap:0.6rem;">
+        <button class="toggle${syncConfig.vps.ativo?' on':''}" id="s-vps-ativo"></button>
+        <label style="margin:0;">Sincronizar automaticamente a cada alteração</label>
+      </div>
+      <div class="field-error" id="s-vps-erro"></div>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn-ghost btn-sm" id="s-vps-salvar">Salvar configuração</button>
+        <button class="btn-ghost btn-sm" id="s-vps-agora">Fazer backup agora</button>
+        <button class="btn-ghost btn-sm" id="s-vps-restaurar">Restaurar do servidor</button>
+      </div>
+    `;
+    document.getElementById('s-vps-ativo').onclick = (e) => { e.target.classList.toggle('on'); };
+    const capturar = () => {
+      syncConfig.vps.url = document.getElementById('s-vps-url').value.trim();
+      syncConfig.vps.token = document.getElementById('s-vps-token').value.trim();
+      syncConfig.vps.ativo = document.getElementById('s-vps-ativo').classList.contains('on');
+      salvarSyncConfig();
+    };
+    document.getElementById('s-vps-salvar').onclick = () => { capturar(); document.getElementById('s-vps-erro').style.color='var(--green)'; document.getElementById('s-vps-erro').textContent='Configuração salva.'; };
+    document.getElementById('s-vps-agora').onclick = async () => {
+      capturar();
+      document.getElementById('s-vps-erro').style.color='var(--ink-soft)';
+      document.getElementById('s-vps-erro').textContent = 'Enviando backup…';
+      try{ await backupVPS(); document.getElementById('s-vps-erro').style.color='var(--green)'; document.getElementById('s-vps-erro').textContent = 'Backup enviado com sucesso.'; }
+      catch(e){ document.getElementById('s-vps-erro').style.color='var(--red)'; document.getElementById('s-vps-erro').textContent = e.message; }
+    };
+    document.getElementById('s-vps-restaurar').onclick = async () => {
+      capturar();
+      document.getElementById('s-vps-erro').style.color='var(--ink-soft)';
+      document.getElementById('s-vps-erro').textContent = 'Restaurando…';
+      try{ await restaurarVPS(); flashMsg = 'Dados restaurados do servidor.'; fecharOverlay(); render(); }
+      catch(e){ document.getElementById('s-vps-erro').style.color='var(--red)'; document.getElementById('s-vps-erro').textContent = e.message; }
+    };
+  };
+
+  const desenharArquivo = () => {
+    const cont = document.getElementById('ssub-conteudo');
+    cont.innerHTML = `
+      <p class="field-hint" style="margin-bottom:0.8rem;">
+        Baixe um arquivo .json com todos os dados. Se salvar esse arquivo dentro de uma pasta sincronizada do Google Drive, OneDrive ou Dropbox no seu computador, ele vira um backup automático sem precisar configurar nada.
+      </p>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn-ghost btn-sm" id="s-exportar">Exportar backup (.json)</button>
+      </div>
+      <div class="field" style="margin-top:1rem;">
+        <label for="s-importar">Restaurar de um arquivo</label>
+        <input id="s-importar" type="file" accept=".json">
+      </div>
+    `;
+    document.getElementById('s-exportar').onclick = exportarArquivo;
+    document.getElementById('s-importar').onchange = (e) => {
+      const file = e.target.files[0];
+      if(file) importarArquivo(file);
+      fecharOverlay();
+    };
+  };
+
+  desenhar();
+}
+
+
+
+function abrirModalTemplate(){
+  const overlay = criarOverlay();
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Modelo de e-mail</h2>
+      <p class="field-hint" style="margin-bottom:0.8rem;">Use os campos entre chaves: {parecerista}, {processo}, {categoria}, {departamento}, {numero_parecer}, {novo_prazo}.</p>
+      <div class="field"><textarea id="f-template" rows="10">${escapeHtml(state.emailTemplate)}</textarea></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelar">Cancelar</button>
+        <button class="btn" id="salvar-template">Salvar modelo</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('cancelar').onclick = fecharOverlay;
+  document.getElementById('salvar-template').onclick = () => {
+    state.emailTemplate = document.getElementById('f-template').value;
+    saveState();
+    fecharOverlay();
+    flashMsg = 'Modelo de e-mail atualizado.';
+    render();
+  };
+}
+
+/* ---------- Overlay helpers ---------- */
+
+function criarOverlay(){
+  let overlay = document.getElementById('overlay');
+  if(!overlay){
+    overlay = document.createElement('div');
+    overlay.id = 'overlay';
+    overlay.className = 'overlay';
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e)=>{ if(e.target===overlay) fecharOverlay(); });
+  }
+  overlay.classList.add('open');
+  return overlay;
+}
+function fecharOverlay(){ const overlay = document.getElementById('overlay'); if(overlay) overlay.classList.remove('open'); }
+
+loadState();
+</script>
+</body>
+</html>
