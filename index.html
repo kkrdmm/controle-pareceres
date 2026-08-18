@@ -1278,7 +1278,7 @@ function parseLinhaParecerista(row){
   const nome = acha(['nome']);
   const email = acha(['mail']);
   const departamento = acha(['depart']);
-  const categoria = normalizarCategoriaParecerista(acha(['categ']));
+  const categoria = normalizarCategoriaParecerista(acha(['categ','funcao','vinculo','cargo']));
   if(!nome) return null;
   return { id: nUSP || uid(), nome, email, departamento, categoria, ativo:true };
 }
