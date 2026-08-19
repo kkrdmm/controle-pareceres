@@ -854,9 +854,9 @@ function paginaDashboard(){
       <div class="metric-card red"><div class="num">${atrasados}</div><div class="lbl">Em atraso agora</div></div>
     </div>
     <div class="chart-grid">
-      <div class="chart-card"><h3>Situação atual</h3><canvas id="chart-status"></canvas></div>
-      <div class="chart-card"><h3>Pareceres por categoria</h3><canvas id="chart-categoria"></canvas></div>
-      <div class="chart-card"><h3>Pareceres por departamento</h3><canvas id="chart-departamento"></canvas></div>
+      <div class="chart-card"><h3>Situação atual</h3>${graficosDisponiveis() ? `<canvas id="chart-status"></canvas>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres por categoria</h3>${graficosDisponiveis() ? `<canvas id="chart-categoria"></canvas>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres por departamento</h3>${graficosDisponiveis() ? `<canvas id="chart-departamento"></canvas>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
         <h3>Pareceristas que não emitiram no prazo</h3>
         ${ranking.length ? `
@@ -880,41 +880,54 @@ function paginaDashboard(){
   `;
 }
 
+function graficosDisponiveis(){
+  return typeof Chart !== 'undefined';
+}
+
+function avisoGraficoIndisponivel(){
+  return `<p class="field-hint">Não foi possível carregar a biblioteca de gráficos (a rede pode estar bloqueando recursos externos). Os números continuam corretos nas outras tabelas desta página — tente recarregar a página com internet disponível.</p>`;
+}
+
 function montarGraficos(){
-  Object.values(chartInstances).forEach(c=>c && c.destroy());
-  chartInstances = {};
+  if(!graficosDisponiveis()) return;
+  try{
+    Object.values(chartInstances).forEach(c=>c && c.destroy());
+    chartInstances = {};
 
-  const st = { em_dia:0, atrasado:0, concluido:0 };
-  state.pareceres.forEach(p=> st[statusParecer(p)]++);
-  const ctxStatus = document.getElementById('chart-status');
-  if(ctxStatus){
-    chartInstances.status = new Chart(ctxStatus, {
-      type:'doughnut',
-      data:{ labels:['Em dia','Atrasado','Concluído'], datasets:[{ data:[st.em_dia, st.atrasado, st.concluido], backgroundColor:['#52734F','#9C3B34','#A9752E'] }] },
-      options:{ plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } } }
-    });
-  }
+    const st = { em_dia:0, atrasado:0, concluido:0 };
+    state.pareceres.forEach(p=> st[statusParecer(p)]++);
+    const ctxStatus = document.getElementById('chart-status');
+    if(ctxStatus){
+      chartInstances.status = new Chart(ctxStatus, {
+        type:'doughnut',
+        data:{ labels:['Em dia','Atrasado','Concluído'], datasets:[{ data:[st.em_dia, st.atrasado, st.concluido], backgroundColor:['#52734F','#9C3B34','#A9752E'] }] },
+        options:{ plugins:{ legend:{ position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } } }
+      });
+    }
 
-  const porCategoria = {};
-  state.pareceres.forEach(p=>{ const l = labelCategoria(p); porCategoria[l] = (porCategoria[l]||0)+1; });
-  const ctxCat = document.getElementById('chart-categoria');
-  if(ctxCat){
-    chartInstances.categoria = new Chart(ctxCat, {
-      type:'bar',
-      data:{ labels:Object.keys(porCategoria), datasets:[{ data:Object.values(porCategoria), backgroundColor:'#A9752E' }] },
-      options:{ plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
-    });
-  }
+    const porCategoria = {};
+    state.pareceres.forEach(p=>{ const l = labelCategoria(p); porCategoria[l] = (porCategoria[l]||0)+1; });
+    const ctxCat = document.getElementById('chart-categoria');
+    if(ctxCat){
+      chartInstances.categoria = new Chart(ctxCat, {
+        type:'bar',
+        data:{ labels:Object.keys(porCategoria), datasets:[{ data:Object.values(porCategoria), backgroundColor:'#A9752E' }] },
+        options:{ plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      });
+    }
 
-  const porDepto = {};
-  state.pareceres.forEach(p=>{ const l = p.departamento || 'Não informado'; porDepto[l] = (porDepto[l]||0)+1; });
-  const ctxDepto = document.getElementById('chart-departamento');
-  if(ctxDepto){
-    chartInstances.departamento = new Chart(ctxDepto, {
-      type:'bar',
-      data:{ labels:Object.keys(porDepto), datasets:[{ data:Object.values(porDepto), backgroundColor:'#1C2B45' }] },
-      options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
-    });
+    const porDepto = {};
+    state.pareceres.forEach(p=>{ const l = p.departamento || 'Não informado'; porDepto[l] = (porDepto[l]||0)+1; });
+    const ctxDepto = document.getElementById('chart-departamento');
+    if(ctxDepto){
+      chartInstances.departamento = new Chart(ctxDepto, {
+        type:'bar',
+        data:{ labels:Object.keys(porDepto), datasets:[{ data:Object.values(porDepto), backgroundColor:'#1C2B45' }] },
+        options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      });
+    }
+  }catch(e){
+    console.error('Falha ao montar gráficos do dashboard', e);
   }
 }
 
@@ -1202,6 +1215,10 @@ function abrirModalPareceristas(aviso){
     document.getElementById('f-arquivo').onchange = (e) => {
       const file = e.target.files[0];
       if(!file) return;
+      if(typeof XLSX === 'undefined'){
+        document.getElementById('importar-preview').innerHTML = `<p class="field-error">Não foi possível carregar a biblioteca de leitura de planilhas (a rede pode estar bloqueando recursos externos). Verifique sua conexão com a internet e recarregue a página.</p>`;
+        return;
+      }
       const reader = new FileReader();
       reader.onload = (ev) => {
         try{
