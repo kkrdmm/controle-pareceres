@@ -231,6 +231,14 @@ const CATEGORIAS_PARECER = [
   { id:'outros', label:'Outros' }
 ];
 
+const TIPOS_PARECER = {
+  iniciacao_cientifica: ['Inicial', 'Avaliação de relatório parcial', 'Avaliação de relatório final'],
+  pos_doutorado: ['Inicial', 'Prorrogação', 'Antecipação', 'Avaliação do relatório'],
+  pesquisador_colaborador: ['Inicial', 'Prorrogação', 'Antecipação', 'Avaliação do relatório'],
+  colaborador_academico: ['Inicial'],
+  outros: []
+};
+
 const PARECERISTA_CATEGORIAS = ['Docente','Pós-doutorando','Pesquisador colaborador','Externo'];
 
 const TEMPLATE_EMAIL_PADRAO =
@@ -841,7 +849,7 @@ function tabela(lista){
     return `
       <tr>
         <td class="col-num">Nº ${pad(p.numero)}</td>
-        <td class="col-title">${escapeHtml(numeroProcesso(p))}<span class="sub">${escapeHtml(labelCategoria(p))}${p.autorNUSP ? ' · autor '+escapeHtml(p.autorNUSP) : ''}</span></td>
+        <td class="col-title">${escapeHtml(numeroProcesso(p))}<span class="sub">${escapeHtml(labelCategoria(p))}${p.tipoParecer ? ' · '+escapeHtml(p.tipoParecer) : ''}${p.autorNUSP ? ' · autor '+escapeHtml(p.autorNUSP) : ''}</span></td>
         <td class="muted">${escapeHtml(p.departamento||'—')}</td>
         <td>${escapeHtml(nomeParecerista(parceristaAtualId(p)))}</td>
         <td class="col-date">${fmtDate(p.dataConclusao ? p.dataConclusao : prazoAtivo)}${faseLabel}</td>
@@ -1030,6 +1038,7 @@ function abrirModalNovo(){
         <label for="f-categoria-outros">Especifique a categoria</label>
         <input id="f-categoria-outros" type="text" placeholder="Descreva a categoria">
       </div>
+      <div class="field" id="campo-tipo"></div>
       <div class="field">
         <label for="f-departamento">Departamento vinculado à atividade</label>
         <input id="f-departamento" type="text" list="lista-departamentos" placeholder="Ex: Departamento de Física">
@@ -1047,13 +1056,29 @@ function abrirModalNovo(){
     </div>
   `;
 
+  const montarCampoTipo = (categoria) => {
+    const opcoes = TIPOS_PARECER[categoria] || [];
+    if(opcoes.length > 0){
+      return `
+        <label for="f-tipo">Tipo de parecer</label>
+        <select id="f-tipo">${opcoes.map(t=>`<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join('')}</select>
+      `;
+    }
+    return `
+      <label for="f-tipo">Tipo de parecer (opcional)</label>
+      <input id="f-tipo" type="text" placeholder="Deixe em branco se não se aplicar">
+    `;
+  };
+
   const atualizarSugestao = () => {
     const departamento = document.getElementById('f-departamento').value;
     const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
     document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP);
   };
+  document.getElementById('campo-tipo').innerHTML = montarCampoTipo(document.getElementById('f-categoria').value);
   document.getElementById('f-categoria').onchange = (e) => {
     document.getElementById('campo-outros').style.display = e.target.value==='outros' ? 'block' : 'none';
+    document.getElementById('campo-tipo').innerHTML = montarCampoTipo(e.target.value);
   };
   document.getElementById('f-departamento').oninput = atualizarSugestao;
   document.getElementById('f-autor-nusp').oninput = atualizarSugestao;
@@ -1064,11 +1089,13 @@ function abrirModalNovo(){
     const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
     const categoria = document.getElementById('f-categoria').value;
     const categoriaOutros = document.getElementById('f-categoria-outros').value.trim();
+    const tipoParecer = document.getElementById('f-tipo').value.trim();
     const departamento = document.getElementById('f-departamento').value.trim();
     const parceristaId = document.getElementById('f-parecerista').value;
 
     if(!ano || !codigo){ document.getElementById('err-msg').textContent = 'Informe o ano e o código do processo.'; return; }
     if(categoria==='outros' && !categoriaOutros){ document.getElementById('err-msg').textContent = 'Descreva a categoria do parecer.'; return; }
+    if((TIPOS_PARECER[categoria]||[]).length > 0 && !tipoParecer){ document.getElementById('err-msg').textContent = 'Selecione o tipo de parecer.'; return; }
     if(!departamento){ document.getElementById('err-msg').textContent = 'Informe o departamento vinculado.'; return; }
     if(!parceristaId){ document.getElementById('err-msg').textContent = 'Selecione um parecerista.'; return; }
     if(autorNUSP && parceristaId===autorNUSP){ document.getElementById('err-msg').textContent = 'O parecerista não pode ser o mesmo nº USP do autor avaliado.'; return; }
@@ -1082,6 +1109,7 @@ function abrirModalNovo(){
       autorNUSP,
       categoriaParecer: categoria,
       categoriaParecerOutros: categoria==='outros' ? categoriaOutros : '',
+      tipoParecer,
       departamento,
       atribuicoes: [{ parceristaId, data: hoje }],
       dataSolicitacaoAtual: hoje,
