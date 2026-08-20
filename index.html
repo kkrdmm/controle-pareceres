@@ -264,6 +264,7 @@ function defaultState(){
     emailTemplate: TEMPLATE_EMAIL_PADRAO,
     gruposDepartamentos: [],
     gruposConflito: [],
+    departamentosExtras: ['ADM'],
     atualizadoEm: null
   };
 }
@@ -293,6 +294,8 @@ async function loadState(){
     if(!state.emailTemplate) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
     if(!state.gruposDepartamentos) state.gruposDepartamentos = [];
     if(!state.gruposConflito) state.gruposConflito = [];
+    if(!state.departamentosExtras) state.departamentosExtras = [];
+    if(!state.departamentosExtras.some(d => normaliza(d)==='adm')) state.departamentosExtras.push('ADM');
   }catch(e){
     state = defaultState();
   }
@@ -571,6 +574,7 @@ function sugerirParecerista(departamento, excluirIds){
 function departamentosConhecidos(){
   const set = new Set();
   state.pareceristas.forEach(p=>{ if(p.departamento) set.add(p.departamento); });
+  (state.departamentosExtras||[]).forEach(d=>{ if(d) set.add(d); });
   return Array.from(set).sort();
 }
 
@@ -811,6 +815,7 @@ function render(){
   if(abaAtual === 'pareceres'){
     document.getElementById('btn-novo').onclick = abrirModalNovo;
     document.getElementById('btn-pareceristas').onclick = () => abrirModalPareceristas();
+    document.getElementById('btn-departamentos').onclick = abrirModalDepartamentos;
     document.getElementById('btn-grupos').onclick = abrirModalGrupos;
     document.getElementById('btn-conflitos').onclick = abrirModalConflitos;
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
@@ -856,6 +861,7 @@ function paginaPareceres(lista){
     <div class="actions">
       <button class="btn" id="btn-novo">+ Novo parecer</button>
       <button class="btn-ghost" id="btn-pareceristas">Pareceristas</button>
+      <button class="btn-ghost" id="btn-departamentos">Departamentos</button>
       <button class="btn-ghost" id="btn-grupos">Grupos de departamentos</button>
       <button class="btn-ghost" id="btn-conflitos">Conflitos de interesse</button>
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
@@ -1598,6 +1604,67 @@ function abrirModalSincronizacao(){
     };
   };
 
+  desenhar();
+}
+
+/* ---------- Modal: departamentos ---------- */
+
+function abrirModalDepartamentos(){
+  const overlay = criarOverlay();
+  const desenhar = () => {
+    const doPareceristas = new Set();
+    state.pareceristas.forEach(p=>{ if(p.departamento) doPareceristas.add(normaliza(p.departamento)); });
+    const extras = state.departamentosExtras || [];
+    const todos = departamentosConhecidos();
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Departamentos</h2>
+        <p class="field-hint" style="margin-bottom:1rem;">
+          Esta lista alimenta as sugestões automáticas nos campos de "departamento vinculado" e nos grupos. Departamentos usados por algum parecerista cadastrado aparecem aqui sozinhos; para incluir outros (ex: administrativos, ou que ainda não têm parecerista) adicione manualmente abaixo.
+        </p>
+        <div class="list-scroll">
+          ${todos.map(d=>{
+            const ehExtra = extras.some(e=>normaliza(e)===normaliza(d));
+            const emUsoPorParecerista = doPareceristas.has(normaliza(d));
+            return `
+              <div class="parecerista-row">
+                <span>${escapeHtml(d)}${!emUsoPorParecerista ? ' <span class="muted">— adicionado manualmente</span>' : ''}</span>
+                ${ehExtra && !emUsoPorParecerista ? `<button class="icon-btn danger" data-del-depto="${escapeHtml(d)}" aria-label="Remover ${escapeHtml(d)}" title="Remover">✕</button>` : ''}
+              </div>
+            `;
+          }).join('')}
+        </div>
+        <div class="add-parecerista" style="margin-top:1rem;">
+          <input id="f-novo-depto" type="text" placeholder="Ex: ADM">
+          <button class="btn btn-sm" id="add-depto">Adicionar</button>
+        </div>
+        <div class="field-error" id="err-depto"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-deptos">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('fechar-deptos').onclick = () => { fecharOverlay(); render(); };
+    document.querySelectorAll('[data-del-depto]').forEach(el=>{
+      el.onclick = () => {
+        const d = el.dataset.delDepto;
+        state.departamentosExtras = (state.departamentosExtras||[]).filter(x=>normaliza(x)!==normaliza(d));
+        saveState();
+        desenhar();
+      };
+    });
+    document.getElementById('add-depto').onclick = () => {
+      const val = document.getElementById('f-novo-depto').value.trim();
+      const erro = document.getElementById('err-depto');
+      erro.textContent = '';
+      if(!val){ erro.textContent = 'Digite um nome de departamento.'; return; }
+      if(departamentosConhecidos().some(d=>normaliza(d)===normaliza(val))){ erro.textContent = 'Esse departamento já está na lista.'; return; }
+      state.departamentosExtras = state.departamentosExtras || [];
+      state.departamentosExtras.push(val);
+      saveState();
+      desenhar();
+    };
+  };
   desenhar();
 }
 
