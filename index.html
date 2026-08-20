@@ -609,22 +609,20 @@ function alertasPendentes(){
   return alertas;
 }
 
-function resolverFase1Sim(parecerId){
+function marcarEmitido(parecerId){
   const p = state.pareceres.find(x=>x.id===parecerId);
   if(!p) return;
   p.dataConclusao = todayIso();
-  p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'emitido', parceristaId: parceristaAtualId(p) });
+  p.historicoDecisoes.push({ data: todayIso(), fase: p.faseAtual, resultado:'emitido', parceristaId: parceristaAtualId(p) });
   flashMsg = `Parecer nº ${pad(p.numero)} marcado como concluído.`;
   saveState(); render();
 }
 
-function resolverFase2Sim(parecerId){
+function abrirDecisaoNaoEmitido(parecerId){
   const p = state.pareceres.find(x=>x.id===parecerId);
   if(!p) return;
-  p.dataConclusao = todayIso();
-  p.historicoDecisoes.push({ data: todayIso(), fase:2, resultado:'emitido', parceristaId: parceristaAtualId(p) });
-  flashMsg = `Parecer nº ${pad(p.numero)} marcado como concluído.`;
-  saveState(); render();
+  if(p.faseAtual === 1) abrirModalFase1Nao(parecerId);
+  else abrirModalFase2Nao(parecerId);
 }
 
 function efetuarReatribuicao(parecerId, novoParceristaId){
@@ -832,11 +830,13 @@ function render(){
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
+    document.querySelectorAll('[data-marcar-emitido]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.marcarEmitido); });
+    document.querySelectorAll('[data-marcar-nao]').forEach(el=>{ el.onclick = () => abrirDecisaoNaoEmitido(el.dataset.marcarNao); });
   }
 
-  document.querySelectorAll('[data-alerta-fase1-sim]').forEach(el=>{ el.onclick = () => resolverFase1Sim(el.dataset.alertaFase1Sim); });
+  document.querySelectorAll('[data-alerta-fase1-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase1Sim); });
   document.querySelectorAll('[data-alerta-fase1-nao]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.alertaFase1Nao); });
-  document.querySelectorAll('[data-alerta-fase2-sim]').forEach(el=>{ el.onclick = () => resolverFase2Sim(el.dataset.alertaFase2Sim); });
+  document.querySelectorAll('[data-alerta-fase2-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase2Sim); });
   document.querySelectorAll('[data-alerta-fase2-nao]').forEach(el=>{ el.onclick = () => abrirModalFase2Nao(el.dataset.alertaFase2Nao); });
 
   if(abaAtual === 'dashboard') montarGraficos();
@@ -908,6 +908,10 @@ function tabela(lista){
         <td><span class="stamp ${stampClass}">${stampLabel}</span></td>
         <td>
           <div class="row-actions">
+            ${!p.dataConclusao ? `
+              <button class="icon-btn" data-marcar-emitido="${p.id}" title="Marcar como emitido" aria-label="Marcar como emitido">✓</button>
+              <button class="icon-btn" data-marcar-nao="${p.id}" title="Ainda não emitido" aria-label="Ainda não emitido">↻</button>
+            ` : ''}
             <button class="icon-btn danger" data-excluir="${p.id}" title="Excluir" aria-label="Excluir">✕</button>
           </div>
         </td>
