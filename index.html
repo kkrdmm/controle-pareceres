@@ -263,6 +263,7 @@ function defaultState(){
     proximoNumero: 1,
     emailTemplate: TEMPLATE_EMAIL_PADRAO,
     gruposDepartamentos: [],
+    gruposConflito: [],
     atualizadoEm: null
   };
 }
@@ -291,6 +292,7 @@ async function loadState(){
     state = res ? JSON.parse(res.value) : defaultState();
     if(!state.emailTemplate) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
     if(!state.gruposDepartamentos) state.gruposDepartamentos = [];
+    if(!state.gruposConflito) state.gruposConflito = [];
   }catch(e){
     state = defaultState();
   }
@@ -531,6 +533,17 @@ function grupoDoDepartamento(departamento){
   return (state.gruposDepartamentos||[]).find(grupo => grupo.some(d => normaliza(d)===n)) || null;
 }
 
+function conflitantesDe(nUSP){
+  if(!nUSP) return [];
+  const conjunto = new Set();
+  (state.gruposConflito||[]).forEach(grupo=>{
+    if(grupo.includes(nUSP)){
+      grupo.forEach(id=>{ if(id !== nUSP) conjunto.add(id); });
+    }
+  });
+  return Array.from(conjunto);
+}
+
 function sugerirParecerista(departamento, excluirIds){
   excluirIds = excluirIds || [];
   const ativos = parceristasAtivos().filter(p=> !excluirIds.includes(p.id));
@@ -619,14 +632,15 @@ function abrirModalFase2Nao(parecerId){
   if(!p) return;
   const parceristaAnteriorId = parceristaAtualId(p);
   const jaTentados = p.atribuicoes.map(a=>a.parceristaId);
+  const conflitantesAutor = conflitantesDe(p.autorNUSP);
   const excluidosParaSugestao = jaTentados.slice();
-  if(p.autorNUSP) excluidosParaSugestao.push(p.autorNUSP);
+  if(p.autorNUSP) excluidosParaSugestao.push(p.autorNUSP, ...conflitantesAutor);
   const sugestao = sugerirParecerista(p.departamento, excluidosParaSugestao);
 
   const overlay = criarOverlay();
   const grupo = grupoDoDepartamento(p.departamento);
   const opcoes = () => {
-    const ativos = parceristasAtivos().filter(x=> x.id !== p.autorNUSP);
+    const ativos = parceristasAtivos().filter(x=> x.id !== p.autorNUSP && !conflitantesAutor.includes(x.id));
     if(ativos.length === 0) return null;
     return ativos.map(x=>{
       let tag = '';
@@ -798,6 +812,7 @@ function render(){
     document.getElementById('btn-novo').onclick = abrirModalNovo;
     document.getElementById('btn-pareceristas').onclick = () => abrirModalPareceristas();
     document.getElementById('btn-grupos').onclick = abrirModalGrupos;
+    document.getElementById('btn-conflitos').onclick = abrirModalConflitos;
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
@@ -842,6 +857,7 @@ function paginaPareceres(lista){
       <button class="btn" id="btn-novo">+ Novo parecer</button>
       <button class="btn-ghost" id="btn-pareceristas">Pareceristas</button>
       <button class="btn-ghost" id="btn-grupos">Grupos de departamentos</button>
+      <button class="btn-ghost" id="btn-conflitos">Conflitos de interesse</button>
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
@@ -1020,7 +1036,7 @@ function abrirModalNovo(){
   const departamentos = departamentosConhecidos();
 
   const montarOpcoesParecerista = (departamento, autorNUSP) => {
-    const excluir = autorNUSP ? [autorNUSP] : [];
+    const excluir = autorNUSP ? [autorNUSP, ...conflitantesDe(autorNUSP)] : [];
     const ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
     const sugerido = departamento ? sugerirParecerista(departamento, excluir) : null;
     const grupo = departamento ? grupoDoDepartamento(departamento) : null;
@@ -1120,7 +1136,7 @@ function abrirModalNovo(){
     if((TIPOS_PARECER[categoria]||[]).length > 0 && !tipoParecer){ document.getElementById('err-msg').textContent = 'Selecione o tipo de parecer.'; return; }
     if(!departamento){ document.getElementById('err-msg').textContent = 'Informe o departamento vinculado.'; return; }
     if(!parceristaId){ document.getElementById('err-msg').textContent = 'Selecione um parecerista.'; return; }
-    if(autorNUSP && parceristaId===autorNUSP){ document.getElementById('err-msg').textContent = 'O parecerista não pode ser o mesmo nº USP do autor avaliado.'; return; }
+    if(autorNUSP && (parceristaId===autorNUSP || conflitantesDe(autorNUSP).includes(parceristaId))){ document.getElementById('err-msg').textContent = 'Esse parecerista está em conflito de interesse com o autor avaliado.'; return; }
 
     const hoje = todayIso();
     const novo = {
@@ -1593,6 +1609,76 @@ function abrirModalGrupos(){
       saveState();
       desenhar();
     };
+  };
+  desenhar();
+}
+
+/* ---------- Modal: conflitos de interesse ---------- */
+
+function abrirModalConflitos(){
+  const overlay = criarOverlay();
+  const desenhar = () => {
+    const grupos = state.gruposConflito || [];
+    const checkboxes = state.pareceristas.slice().sort((a,b)=>a.nome.localeCompare(b.nome)).map(p=>`
+      <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.2rem;font-size:0.83rem;">
+        <input type="checkbox" class="conflito-check" value="${p.id}">
+        ${escapeHtml(p.nome)} <span class="muted">(${escapeHtml(p.departamento||'sem depto.')})</span>
+      </label>
+    `).join('');
+    overlay.innerHTML = `
+      <div class="modal modal-wide">
+        <h2>Conflitos de interesse</h2>
+        <p class="field-hint" style="margin-bottom:1rem;">
+          Pareceristas no mesmo grupo de conflito nunca são sugeridos, nem podem ser selecionados manualmente, para avaliar um parecer cujo "nº USP do autor avaliado" seja de outro integrante do mesmo grupo. Use para cônjuges, coautores frequentes, orientador-orientando, familiares etc.
+        </p>
+        ${grupos.length ? `
+          <div class="list-scroll">
+            ${grupos.map((g,i)=>`
+              <div class="parecerista-row">
+                <span class="name">${g.map(id=>escapeHtml(nomeParecerista(id))).join(' ↔ ')}</span>
+                <button class="icon-btn danger" data-del-conflito="${i}" aria-label="Remover grupo" title="Remover grupo">✕</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p class="field-hint">Nenhum grupo de conflito cadastrado ainda.</p>`}
+        <div style="margin-top:1rem;">
+          <label style="font-size:0.78rem;color:var(--ink-soft);display:block;margin-bottom:0.4rem;">Marque os pareceristas que estão em conflito entre si</label>
+          ${state.pareceristas.length ? `
+            <div class="list-scroll mini-table-wrap" style="max-height:220px;border:1px solid var(--line);border-radius:8px;padding:0.3rem 0.9rem;">
+              ${checkboxes}
+            </div>
+          ` : `<p class="field-hint">Cadastre pareceristas primeiro, em "Pareceristas".</p>`}
+        </div>
+        <div class="field-error" id="err-conflito" style="margin-top:0.6rem;"></div>
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn-ghost btn-sm" id="add-conflito">Criar grupo de conflito</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-conflitos">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('fechar-conflitos').onclick = () => { fecharOverlay(); render(); };
+    document.querySelectorAll('[data-del-conflito]').forEach(el=>{
+      el.onclick = () => {
+        state.gruposConflito.splice(Number(el.dataset.delConflito), 1);
+        saveState();
+        desenhar();
+      };
+    });
+    const btnAdd = document.getElementById('add-conflito');
+    if(btnAdd){
+      btnAdd.onclick = () => {
+        const marcados = Array.from(document.querySelectorAll('.conflito-check:checked')).map(el=>el.value);
+        const erro = document.getElementById('err-conflito');
+        erro.textContent = '';
+        if(marcados.length < 2){ erro.textContent = 'Selecione pelo menos dois pareceristas.'; return; }
+        state.gruposConflito = state.gruposConflito || [];
+        state.gruposConflito.push(marcados);
+        saveState();
+        desenhar();
+      };
+    }
   };
   desenhar();
 }
