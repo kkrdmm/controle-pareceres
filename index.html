@@ -950,7 +950,8 @@ function paginaDashboard(){
     <div class="chart-grid">
       <div class="chart-card"><h3>Situação atual</h3>${graficosDisponiveis() ? `<canvas id="chart-status"></canvas>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card"><h3>Pareceres por categoria</h3>${graficosDisponiveis() ? `<canvas id="chart-categoria"></canvas>` : avisoGraficoIndisponivel()}</div>
-      <div class="chart-card"><h3>Pareceres por departamento</h3>${graficosDisponiveis() ? `<canvas id="chart-departamento"></canvas>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres solicitados por departamento</h3>${graficosDisponiveis() ? `<canvas id="chart-departamento"></canvas>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres emitidos por departamento</h3>${graficosDisponiveis() ? `<canvas id="chart-departamento-emitidos"></canvas>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
         <h3>Pareceristas que não emitiram no prazo</h3>
         ${ranking.length ? `
@@ -1017,6 +1018,21 @@ function montarGraficos(){
       chartInstances.departamento = new Chart(ctxDepto, {
         type:'bar',
         data:{ labels:Object.keys(porDepto), datasets:[{ data:Object.values(porDepto), backgroundColor:'#1C2B45' }] },
+        options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      });
+    }
+
+    const porDeptoEmitido = {};
+    state.pareceres.filter(p=>p.dataConclusao).forEach(p=>{
+      const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
+      const l = (parecerista && parecerista.departamento) || 'Não informado';
+      porDeptoEmitido[l] = (porDeptoEmitido[l]||0)+1;
+    });
+    const ctxDeptoEmitidos = document.getElementById('chart-departamento-emitidos');
+    if(ctxDeptoEmitidos){
+      chartInstances.departamentoEmitidos = new Chart(ctxDeptoEmitidos, {
+        type:'bar',
+        data:{ labels:Object.keys(porDeptoEmitido), datasets:[{ data:Object.values(porDeptoEmitido), backgroundColor:'#52734F' }] },
         options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
       });
     }
