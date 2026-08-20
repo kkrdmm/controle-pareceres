@@ -262,6 +262,7 @@ function defaultState(){
     pareceres: [],
     proximoNumero: 1,
     emailTemplate: TEMPLATE_EMAIL_PADRAO,
+    gruposDepartamentos: [],
     atualizadoEm: null
   };
 }
@@ -289,6 +290,7 @@ async function loadState(){
     const res = await storageGetCompat(STORAGE_KEY);
     state = res ? JSON.parse(res.value) : defaultState();
     if(!state.emailTemplate) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
+    if(!state.gruposDepartamentos) state.gruposDepartamentos = [];
   }catch(e){
     state = defaultState();
   }
@@ -523,11 +525,24 @@ function saldoReciprocidade(parceristaId){
   return contarAtribuicoes(parceristaId) - contarAvaliacoesRecebidas(parceristaId);
 }
 
+function grupoDoDepartamento(departamento){
+  const n = normaliza(departamento);
+  if(!n) return null;
+  return (state.gruposDepartamentos||[]).find(grupo => grupo.some(d => normaliza(d)===n)) || null;
+}
+
 function sugerirParecerista(departamento, excluirIds){
   excluirIds = excluirIds || [];
   const ativos = parceristasAtivos().filter(p=> !excluirIds.includes(p.id));
   const foraDepto = ativos.filter(p=> normaliza(p.departamento) !== normaliza(departamento));
-  const pool = foraDepto.length ? foraDepto : ativos;
+  const grupo = grupoDoDepartamento(departamento);
+  let pool;
+  if(grupo){
+    const doMesmoGrupo = foraDepto.filter(p=> grupo.some(d=> normaliza(d)===normaliza(p.departamento)));
+    pool = doMesmoGrupo.length ? doMesmoGrupo : (foraDepto.length ? foraDepto : ativos);
+  } else {
+    pool = foraDepto.length ? foraDepto : ativos;
+  }
   const withStats = pool.map(p=>({ p, saldo: saldoReciprocidade(p.id), last: ultimaAtribuicao(p.id) }));
   withStats.sort((a,b)=>{
     // prioriza quem foi mais avaliado do que avaliou (saldo mais baixo = deve retribuir)
@@ -609,14 +624,17 @@ function abrirModalFase2Nao(parecerId){
   const sugestao = sugerirParecerista(p.departamento, excluidosParaSugestao);
 
   const overlay = criarOverlay();
+  const grupo = grupoDoDepartamento(p.departamento);
   const opcoes = () => {
     const ativos = parceristasAtivos().filter(x=> x.id !== p.autorNUSP);
     if(ativos.length === 0) return null;
     return ativos.map(x=>{
       let tag = '';
+      const mesmoDepto = normaliza(x.departamento)===normaliza(p.departamento);
       if(sugestao && x.id===sugestao.id) tag = ' — sugerido';
       else if(jaTentados.includes(x.id)) tag = ' — já atribuído anteriormente neste parecer';
-      else if(normaliza(x.departamento)===normaliza(p.departamento)) tag = ' — mesmo departamento';
+      else if(mesmoDepto) tag = ' — mesmo departamento';
+      else if(grupo && grupo.some(d=>normaliza(d)===normaliza(x.departamento))) tag = ' — departamento relacionado';
       return `<option value="${x.id}" ${sugestao && x.id===sugestao.id ? 'selected':''}>${escapeHtml(x.nome)}${tag}</option>`;
     }).join('');
   };
@@ -779,6 +797,7 @@ function render(){
   if(abaAtual === 'pareceres'){
     document.getElementById('btn-novo').onclick = abrirModalNovo;
     document.getElementById('btn-pareceristas').onclick = () => abrirModalPareceristas();
+    document.getElementById('btn-grupos').onclick = abrirModalGrupos;
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
@@ -822,6 +841,7 @@ function paginaPareceres(lista){
     <div class="actions">
       <button class="btn" id="btn-novo">+ Novo parecer</button>
       <button class="btn-ghost" id="btn-pareceristas">Pareceristas</button>
+      <button class="btn-ghost" id="btn-grupos">Grupos de departamentos</button>
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
@@ -1003,9 +1023,11 @@ function abrirModalNovo(){
     const excluir = autorNUSP ? [autorNUSP] : [];
     const ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
     const sugerido = departamento ? sugerirParecerista(departamento, excluir) : null;
+    const grupo = departamento ? grupoDoDepartamento(departamento) : null;
     return ativos.map(p=>{
       const mesmoDepto = departamento && normaliza(p.departamento)===normaliza(departamento);
-      const tag = sugerido && p.id===sugerido.id ? ' — sugerido' : (mesmoDepto ? ' — mesmo departamento' : '');
+      const relacionado = !mesmoDepto && grupo && grupo.some(d=>normaliza(d)===normaliza(p.departamento));
+      const tag = sugerido && p.id===sugerido.id ? ' — sugerido' : (mesmoDepto ? ' — mesmo departamento' : (relacionado ? ' — departamento relacionado' : ''));
       return `<option value="${p.id}" ${sugerido && p.id===sugerido.id ? 'selected':''}>${escapeHtml(p.nome)}${tag}</option>`;
     }).join('');
   };
@@ -1518,6 +1540,62 @@ function abrirModalSincronizacao(){
   desenhar();
 }
 
+/* ---------- Modal: grupos de departamentos ---------- */
+
+function abrirModalGrupos(){
+  const overlay = criarOverlay();
+  const desenhar = () => {
+    const grupos = state.gruposDepartamentos || [];
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Grupos de departamentos</h2>
+        <p class="field-hint" style="margin-bottom:1rem;">
+          Departamentos no mesmo grupo têm atividades relacionadas. A sugestão automática de parecerista nunca indica alguém do mesmo departamento do processo, mas, dentro dos demais, prioriza quem for de um departamento do mesmo grupo antes de considerar os outros.
+          Ex: se ZEA, ZEB e ZAB formam um grupo, um processo do ZEA prioriza pareceristas do ZEB/ZAB antes de ir para departamentos fora do grupo.
+        </p>
+        ${grupos.length ? `
+          <div class="list-scroll">
+            ${grupos.map((g,i)=>`
+              <div class="parecerista-row">
+                <span class="name">${g.map(d=>escapeHtml(d)).join(' · ')}</span>
+                <button class="icon-btn danger" data-del-grupo="${i}" aria-label="Remover grupo" title="Remover grupo">✕</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p class="field-hint">Nenhum grupo cadastrado ainda.</p>`}
+        <div class="add-parecerista" style="margin-top:1rem;">
+          <input id="f-novo-grupo" type="text" placeholder="Ex: ZEA, ZEB, ZAB">
+          <button class="btn btn-sm" id="add-grupo">Adicionar grupo</button>
+        </div>
+        <p class="field-hint">Separe os departamentos por vírgula. Use as mesmas siglas/nomes cadastrados nos pareceristas.</p>
+        <div class="field-error" id="err-grupo"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-grupos">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('fechar-grupos').onclick = () => { fecharOverlay(); render(); };
+    document.querySelectorAll('[data-del-grupo]').forEach(el=>{
+      el.onclick = () => {
+        state.gruposDepartamentos.splice(Number(el.dataset.delGrupo), 1);
+        saveState();
+        desenhar();
+      };
+    });
+    document.getElementById('add-grupo').onclick = () => {
+      const raw = document.getElementById('f-novo-grupo').value;
+      const deptos = raw.split(',').map(s=>s.trim()).filter(Boolean);
+      const erro = document.getElementById('err-grupo');
+      erro.textContent = '';
+      if(deptos.length < 2){ erro.textContent = 'Informe pelo menos dois departamentos separados por vírgula.'; return; }
+      state.gruposDepartamentos = state.gruposDepartamentos || [];
+      state.gruposDepartamentos.push(deptos);
+      saveState();
+      desenhar();
+    };
+  };
+  desenhar();
+}
 
 
 function abrirModalTemplate(){
