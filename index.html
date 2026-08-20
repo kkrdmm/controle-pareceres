@@ -256,6 +256,8 @@ Atenciosamente,`;
 
 let state = null;
 let filtro = 'todos';
+let filtroTexto = '';
+let ordenacao = { coluna: null, direcao: 'asc' };
 let abaAtual = 'pareceres';
 let flashMsg = null;
 let chartInstances = {};
@@ -764,16 +766,51 @@ function abrirModalFase1Nao(parecerId){
 
 /* ---------- Render principal ---------- */
 
+function ordenarPareceres(lista){
+  const copia = lista.slice();
+  if(!ordenacao.coluna){
+    copia.sort((a,b)=>{
+      const pa = a.dataConclusao || (a.faseAtual===1 ? a.prazoFase1 : a.prazoFase2);
+      const pb = b.dataConclusao || (b.faseAtual===1 ? b.prazoFase1 : b.prazoFase2);
+      return (pa||'').localeCompare(pb||'');
+    });
+    return copia;
+  }
+  const dir = ordenacao.direcao === 'asc' ? 1 : -1;
+  copia.sort((a,b)=>{
+    let va, vb, numerico = false;
+    switch(ordenacao.coluna){
+      case 'numero': va=a.numero; vb=b.numero; numerico=true; break;
+      case 'processo': va=numeroProcesso(a); vb=numeroProcesso(b); break;
+      case 'departamento': va=a.departamento||''; vb=b.departamento||''; break;
+      case 'parecerista': va=descricaoResponsavel(a); vb=descricaoResponsavel(b); break;
+      case 'prazo': va = a.dataConclusao || (a.faseAtual===1?a.prazoFase1:a.prazoFase2) || ''; vb = b.dataConclusao || (b.faseAtual===1?b.prazoFase1:b.prazoFase2) || ''; break;
+      case 'status': { const ordem={atrasado:0,em_dia:1,concluido:2}; va=ordem[statusParecer(a)]; vb=ordem[statusParecer(b)]; numerico=true; break; }
+      default: va=0; vb=0;
+    }
+    const cmp = numerico ? (va - vb) : String(va).localeCompare(String(vb), 'pt-BR', { numeric:true, sensitivity:'base' });
+    return cmp * dir;
+  });
+  return copia;
+}
+
 function render(){
   const app = document.getElementById('app');
   const alertas = alertasPendentes();
 
-  let pareceresFiltrados = state.pareceres.slice().sort((a,b)=>{
-    const pa = a.faseAtual===1 ? a.prazoFase1 : a.prazoFase2;
-    const pb = b.faseAtual===1 ? b.prazoFase1 : b.prazoFase2;
-    return (pa||'').localeCompare(pb||'');
-  });
+  let pareceresFiltrados = state.pareceres.slice();
   if(filtro !== 'todos') pareceresFiltrados = pareceresFiltrados.filter(p=>statusParecer(p)===filtro);
+  if(filtroTexto.trim()){
+    const termo = normaliza(filtroTexto);
+    pareceresFiltrados = pareceresFiltrados.filter(p => {
+      const campos = [
+        String(p.numero), numeroProcesso(p), labelCategoria(p), p.tipoParecer||'',
+        p.categoriaParecerOutros||'', p.autorNUSP||'', p.departamento||'', descricaoResponsavel(p)
+      ];
+      return campos.some(c => normaliza(c).includes(termo));
+    });
+  }
+  pareceresFiltrados = ordenarPareceres(pareceresFiltrados);
 
   app.innerHTML = `
     <div class="header">
@@ -832,6 +869,27 @@ function render(){
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
     document.querySelectorAll('[data-marcar-emitido]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.marcarEmitido); });
     document.querySelectorAll('[data-marcar-nao]').forEach(el=>{ el.onclick = () => abrirDecisaoNaoEmitido(el.dataset.marcarNao); });
+    const buscaEl = document.getElementById('f-busca');
+    if(buscaEl){
+      buscaEl.oninput = (e) => {
+        filtroTexto = e.target.value;
+        const cursor = e.target.selectionStart;
+        render();
+        const novoBusca = document.getElementById('f-busca');
+        if(novoBusca){ novoBusca.focus(); novoBusca.setSelectionRange(cursor, cursor); }
+      };
+    }
+    document.querySelectorAll('[data-ordenar]').forEach(el=>{
+      el.onclick = () => {
+        const coluna = el.dataset.ordenar;
+        if(ordenacao.coluna === coluna){
+          ordenacao.direcao = ordenacao.direcao === 'asc' ? 'desc' : 'asc';
+        } else {
+          ordenacao = { coluna, direcao: 'asc' };
+        }
+        render();
+      };
+    });
   }
 
   document.querySelectorAll('[data-alerta-fase1-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase1Sim); });
@@ -877,7 +935,8 @@ function paginaPareceres(lista){
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
-    <div class="filters">
+    <div class="filters" style="align-items:center;">
+      <input id="f-busca" type="text" placeholder="Buscar por processo, parecerista, departamento, categoria..." value="${escapeHtml(filtroTexto)}" style="flex:1;min-width:220px;max-width:420px;padding:0.5rem 0.8rem;border:1px solid var(--line);border-radius:20px;background:var(--paper-raised);font-size:0.85rem;">
       ${filterChip('todos','Todos')}
       ${filterChip('em_dia','Em dia')}
       ${filterChip('atrasado','Atrasados')}
@@ -921,14 +980,23 @@ function tabela(lista){
   return `
     <table>
       <thead><tr>
-        <th>Registro</th><th>Processo</th><th>Departamento</th><th>Parecerista</th><th>Prazo / conclusão</th><th>Status</th><th>Ações</th>
+        ${thOrdenavel('Registro','numero')}${thOrdenavel('Processo','processo')}${thOrdenavel('Departamento','departamento')}${thOrdenavel('Parecerista','parecerista')}${thOrdenavel('Prazo / conclusão','prazo')}${thOrdenavel('Status','status')}<th>Ações</th>
       </tr></thead>
       <tbody>${rows}</tbody>
     </table>
   `;
 }
 
+function thOrdenavel(label, coluna){
+  const ativo = ordenacao.coluna === coluna;
+  const seta = ativo ? (ordenacao.direcao==='asc' ? '▲' : '▼') : '⇅';
+  return `<th data-ordenar="${coluna}" style="cursor:pointer;user-select:none;">${label} <span style="opacity:${ativo?1:0.4};font-size:0.75em;">${seta}</span></th>`;
+}
+
 function emptyState(){
+  if(filtroTexto.trim()){
+    return `<div class="empty-state"><p class="big">Nenhum resultado para "${escapeHtml(filtroTexto)}"</p><p>Tente outro termo ou limpe a busca.</p></div>`;
+  }
   return `<div class="empty-state"><p class="big">Nenhum parecer registrado</p><p>Clique em "Novo parecer" para abrir o primeiro registro.</p></div>`;
 }
 
