@@ -1044,7 +1044,7 @@ function abrirModalNovo(){
       const mesmoDepto = departamento && normaliza(p.departamento)===normaliza(departamento);
       const relacionado = !mesmoDepto && grupo && grupo.some(d=>normaliza(d)===normaliza(p.departamento));
       const tag = sugerido && p.id===sugerido.id ? ' — sugerido' : (mesmoDepto ? ' — mesmo departamento' : (relacionado ? ' — departamento relacionado' : ''));
-      return `<option value="${p.id}" ${sugerido && p.id===sugerido.id ? 'selected':''}>${escapeHtml(p.nome)}${tag}</option>`;
+      return `<option value="${p.id}" ${sugerido && p.id===sugerido.id ? 'selected':''}>${escapeHtml(p.nome)} — nº USP ${escapeHtml(p.id)}${tag}</option>`;
     }).join('');
   };
 
@@ -1085,6 +1085,11 @@ function abrirModalNovo(){
       <div class="field">
         <label for="f-parecerista">Parecerista (sugestão automática por departamento, reciprocidade e rotatividade)</label>
         <select id="f-parecerista">${montarOpcoesParecerista('', '')}</select>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
+          <input id="f-parecerista-usp" type="text" readonly style="flex:1;background:var(--paper-raised);">
+          <button type="button" class="btn-ghost btn-sm" id="copiar-usp-parecerista">Copiar nº USP</button>
+        </div>
+        <p class="field-hint" id="copiar-usp-status"></p>
       </div>
       <div class="field-error" id="err-msg"></div>
       <div class="modal-actions">
@@ -1108,11 +1113,35 @@ function abrirModalNovo(){
     `;
   };
 
+  const atualizarCampoUsp = () => {
+    const id = document.getElementById('f-parecerista').value;
+    const p = state.pareceristas.find(x=>x.id===id);
+    document.getElementById('f-parecerista-usp').value = p ? `${p.nome} — nº USP ${p.id}` : '';
+  };
   const atualizarSugestao = () => {
     const departamento = document.getElementById('f-departamento').value;
     const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
     document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP);
+    atualizarCampoUsp();
   };
+  document.getElementById('f-parecerista').onchange = atualizarCampoUsp;
+  document.getElementById('copiar-usp-parecerista').onclick = () => {
+    const id = document.getElementById('f-parecerista').value;
+    const status = document.getElementById('copiar-usp-status');
+    if(!id){ status.textContent = 'Selecione um parecerista primeiro.'; return; }
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(id)
+        .then(()=>{ status.style.color='var(--green)'; status.textContent = `Nº USP ${id} copiado.`; })
+        .catch(()=>{ status.style.color='var(--ink-soft)'; status.textContent = 'Não foi possível copiar automaticamente — selecione o texto do campo ao lado e copie manualmente.'; });
+    } else {
+      const campo = document.getElementById('f-parecerista-usp');
+      campo.removeAttribute('readonly');
+      campo.select();
+      status.style.color='var(--ink-soft)';
+      status.textContent = 'Texto selecionado — use Ctrl+C (ou Cmd+C) para copiar.';
+    }
+  };
+  atualizarCampoUsp();
   document.getElementById('campo-tipo').innerHTML = montarCampoTipo(document.getElementById('f-categoria').value);
   document.getElementById('f-categoria').onchange = (e) => {
     document.getElementById('campo-outros').style.display = e.target.value==='outros' ? 'block' : 'none';
