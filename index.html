@@ -233,11 +233,15 @@ const CATEGORIAS_PARECER = [
 
 const TIPOS_PARECER = {
   iniciacao_cientifica: ['Inicial', 'Avaliação de relatório parcial', 'Avaliação de relatório final'],
-  pos_doutorado: ['Inicial', 'Prorrogação', 'Antecipação', 'Avaliação do relatório'],
-  pesquisador_colaborador: ['Inicial', 'Prorrogação', 'Antecipação', 'Avaliação do relatório'],
+  pos_doutorado: ['Inicial', 'Prorrogação', 'Antecipação', 'Avaliação do relatório', 'Anuência do departamento - inicial', 'Anuência do departamento - relatório'],
+  pesquisador_colaborador: ['Inicial', 'Prorrogação', 'Antecipação', 'Avaliação do relatório', 'Anuência do departamento - inicial', 'Anuência do departamento - relatório'],
   colaborador_academico: ['Inicial'],
   outros: []
 };
+
+// Tipos de parecer que não têm um parecerista individual associado — o prazo conta
+// normalmente (14 + 7 dias), mas não há indicação/sugestão de pessoa responsável.
+const TIPOS_SEM_PARECERISTA = ['Anuência do departamento - inicial', 'Anuência do departamento - relatório'];
 
 const PARECERISTA_CATEGORIAS = ['Docente','Pós-doutorando','Pesquisador colaborador','Externo'];
 
@@ -505,6 +509,12 @@ function nomeParecerista(id){
   return p ? p.nome : '—';
 }
 
+function descricaoResponsavel(parecer){
+  const id = parceristaAtualId(parecer);
+  if(id) return nomeParecerista(id);
+  return TIPOS_SEM_PARECERISTA.includes(parecer.tipoParecer) ? 'o departamento (anuência)' : '—';
+}
+
 function contarAtribuicoes(parceristaId){
   let n = 0;
   state.pareceres.forEach(p=> p.atribuicoes.forEach(a=>{ if(a.parceristaId===parceristaId) n++; }));
@@ -695,10 +705,10 @@ function abrirModalFase2Nao(parecerId){
 }
 
 function preencherTemplate(template, parecer){
-  const parceristaId = parceristaAtualId(parecer);
+  const saudacao = parceristaAtualId(parecer) ? nomeParecerista(parceristaAtualId(parecer)) : 'responsável pelo departamento';
   const novoPrazo = addDays(parecer.dataSolicitacaoAtual, 21);
   return template
-    .replaceAll('{parecerista}', nomeParecerista(parceristaId))
+    .replaceAll('{parecerista}', saudacao)
     .replaceAll('{processo}', numeroProcesso(parecer))
     .replaceAll('{categoria}', labelCategoria(parecer))
     .replaceAll('{departamento}', parecer.departamento || '—')
@@ -837,7 +847,7 @@ function alertaHtml(a){
   if(a.tipo === 'fase1'){
     return `
       <div class="alert-card">
-        <p>Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))} — o prazo de 14 dias com ${escapeHtml(nomeParecerista(parceristaAtualId(p)))} foi encerrado. O parecer foi emitido?</p>
+        <p>Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))} — o prazo de 14 dias com ${escapeHtml(descricaoResponsavel(p))} foi encerrado. O parecer foi emitido?</p>
         <div class="alert-actions">
           <button class="btn btn-sm" data-alerta-fase1-sim="${p.id}">Sim</button>
           <button class="btn-ghost btn-sm" data-alerta-fase1-nao="${p.id}">Não</button>
@@ -847,7 +857,7 @@ function alertaHtml(a){
   }
   return `
     <div class="alert-card">
-      <p>Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))} — prazo final (21 dias) com ${escapeHtml(nomeParecerista(parceristaAtualId(p)))} foi encerrado. O parecer foi emitido?</p>
+      <p>Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))} — prazo final (21 dias) com ${escapeHtml(descricaoResponsavel(p))} foi encerrado. O parecer foi emitido?</p>
       <div class="alert-actions">
         <button class="btn btn-sm" data-alerta-fase2-sim="${p.id}">Sim</button>
         <button class="btn-ghost btn-sm" data-alerta-fase2-nao="${p.id}">Não, escolher novo parecerista</button>
@@ -893,7 +903,7 @@ function tabela(lista){
         <td class="col-num">Nº ${pad(p.numero)}</td>
         <td class="col-title">${escapeHtml(numeroProcesso(p))}<span class="sub">${escapeHtml(labelCategoria(p))}${p.tipoParecer ? ' · '+escapeHtml(p.tipoParecer) : ''}${p.autorNUSP ? ' · autor '+escapeHtml(p.autorNUSP) : ''}</span></td>
         <td class="muted">${escapeHtml(p.departamento||'—')}</td>
-        <td>${escapeHtml(nomeParecerista(parceristaAtualId(p)))}</td>
+        <td>${escapeHtml(descricaoResponsavel(p))}</td>
         <td class="col-date">${fmtDate(p.dataConclusao ? p.dataConclusao : prazoAtivo)}${faseLabel}</td>
         <td><span class="stamp ${stampClass}">${stampLabel}</span></td>
         <td>
@@ -1104,7 +1114,7 @@ function abrirModalNovo(){
         <input id="f-departamento" type="text" list="lista-departamentos" placeholder="Ex: Departamento de Física">
         <datalist id="lista-departamentos">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
       </div>
-      <div class="field">
+      <div class="field" id="campo-parecerista-wrap">
         <label for="f-parecerista">Parecerista (sugestão automática por departamento, reciprocidade e rotatividade)</label>
         <select id="f-parecerista">${montarOpcoesParecerista('', '')}</select>
         <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
@@ -1113,6 +1123,7 @@ function abrirModalNovo(){
         </div>
         <p class="field-hint" id="copiar-usp-status"></p>
       </div>
+      <p class="field-hint" id="aviso-sem-parecerista" style="display:none;">Esse tipo de parecer é uma anuência do próprio departamento — não há um parecerista individual a indicar. O prazo continua sendo contado normalmente (14 + 7 dias).</p>
       <div class="field-error" id="err-msg"></div>
       <div class="modal-actions">
         <button class="btn-ghost" id="cancelar">Cancelar</button>
@@ -1135,6 +1146,18 @@ function abrirModalNovo(){
     `;
   };
 
+  const atualizarVisibilidadeParecerista = () => {
+    const tipoEl = document.getElementById('f-tipo');
+    const tipo = tipoEl ? tipoEl.value : '';
+    const semParecerista = TIPOS_SEM_PARECERISTA.includes(tipo);
+    document.getElementById('campo-parecerista-wrap').style.display = semParecerista ? 'none' : 'block';
+    document.getElementById('aviso-sem-parecerista').style.display = semParecerista ? 'block' : 'none';
+  };
+  const ligarEventosTipo = () => {
+    const tipoEl = document.getElementById('f-tipo');
+    if(tipoEl){ tipoEl.onchange = atualizarVisibilidadeParecerista; tipoEl.oninput = atualizarVisibilidadeParecerista; }
+    atualizarVisibilidadeParecerista();
+  };
   const atualizarCampoUsp = () => {
     const id = document.getElementById('f-parecerista').value;
     const p = state.pareceristas.find(x=>x.id===id);
@@ -1165,9 +1188,11 @@ function abrirModalNovo(){
   };
   atualizarCampoUsp();
   document.getElementById('campo-tipo').innerHTML = montarCampoTipo(document.getElementById('f-categoria').value);
+  ligarEventosTipo();
   document.getElementById('f-categoria').onchange = (e) => {
     document.getElementById('campo-outros').style.display = e.target.value==='outros' ? 'block' : 'none';
     document.getElementById('campo-tipo').innerHTML = montarCampoTipo(e.target.value);
+    ligarEventosTipo();
   };
   document.getElementById('f-departamento').oninput = atualizarSugestao;
   document.getElementById('f-autor-nusp').oninput = atualizarSugestao;
@@ -1180,14 +1205,17 @@ function abrirModalNovo(){
     const categoriaOutros = document.getElementById('f-categoria-outros').value.trim();
     const tipoParecer = document.getElementById('f-tipo').value.trim();
     const departamento = document.getElementById('f-departamento').value.trim();
-    const parceristaId = document.getElementById('f-parecerista').value;
+    const semParecerista = TIPOS_SEM_PARECERISTA.includes(tipoParecer);
+    const parceristaId = semParecerista ? '' : document.getElementById('f-parecerista').value;
 
     if(!ano || !codigo){ document.getElementById('err-msg').textContent = 'Informe o ano e o código do processo.'; return; }
     if(categoria==='outros' && !categoriaOutros){ document.getElementById('err-msg').textContent = 'Descreva a categoria do parecer.'; return; }
     if((TIPOS_PARECER[categoria]||[]).length > 0 && !tipoParecer){ document.getElementById('err-msg').textContent = 'Selecione o tipo de parecer.'; return; }
     if(!departamento){ document.getElementById('err-msg').textContent = 'Informe o departamento vinculado.'; return; }
-    if(!parceristaId){ document.getElementById('err-msg').textContent = 'Selecione um parecerista.'; return; }
-    if(autorNUSP && (parceristaId===autorNUSP || conflitantesDe(autorNUSP).includes(parceristaId))){ document.getElementById('err-msg').textContent = 'Esse parecerista está em conflito de interesse com o autor avaliado.'; return; }
+    if(!semParecerista){
+      if(!parceristaId){ document.getElementById('err-msg').textContent = 'Selecione um parecerista.'; return; }
+      if(autorNUSP && (parceristaId===autorNUSP || conflitantesDe(autorNUSP).includes(parceristaId))){ document.getElementById('err-msg').textContent = 'Esse parecerista está em conflito de interesse com o autor avaliado.'; return; }
+    }
 
     const hoje = todayIso();
     const novo = {
@@ -1200,7 +1228,7 @@ function abrirModalNovo(){
       categoriaParecerOutros: categoria==='outros' ? categoriaOutros : '',
       tipoParecer,
       departamento,
-      atribuicoes: [{ parceristaId, data: hoje }],
+      atribuicoes: semParecerista ? [] : [{ parceristaId, data: hoje }],
       dataSolicitacaoAtual: hoje,
       faseAtual: 1,
       prazoFase1: addDays(hoje, 14),
