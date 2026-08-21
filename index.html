@@ -271,6 +271,7 @@ function defaultState(){
     gruposDepartamentos: [],
     gruposConflito: [],
     departamentosExtras: ['ADM'],
+    feriadosExtras: [],
     atualizadoEm: null
   };
 }
@@ -301,6 +302,7 @@ async function loadState(){
     if(!state.gruposDepartamentos) state.gruposDepartamentos = [];
     if(!state.gruposConflito) state.gruposConflito = [];
     if(!state.departamentosExtras) state.departamentosExtras = [];
+    if(!state.feriadosExtras) state.feriadosExtras = [];
     if(!state.departamentosExtras.some(d => normaliza(d)==='adm')) state.departamentosExtras.push('ADM');
   }catch(e){
     state = defaultState();
@@ -494,6 +496,65 @@ function fmtDate(iso){ if(!iso) return '—'; const d = new Date(iso+'T00:00:00'
 function addDays(iso, days){ const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+Number(days)); return d.toISOString().slice(0,10); }
 function todayIso(){ return new Date().toISOString().slice(0,10); }
 function diffDays(iso){ const d = new Date(iso+'T00:00:00'); const t = new Date(todayIso()+'T00:00:00'); return Math.round((d-t)/86400000); }
+
+/* ---------- Dias úteis e feriados ---------- */
+
+function pascoaIso(ano){
+  const a = ano % 19, b = Math.floor(ano/100), c = ano % 100, d = Math.floor(b/4), e = b % 4;
+  const f = Math.floor((b+8)/25), g = Math.floor((b-f+1)/3), h = (19*a+b-d-g+15)%30;
+  const i = Math.floor(c/4), k = c%4, l = (32+2*e+2*i-h-k)%7;
+  const m = Math.floor((a+11*h+22*l)/451);
+  const mes = Math.floor((h+l-7*m+114)/31);
+  const dia = ((h+l-7*m+114)%31)+1;
+  return `${ano}-${String(mes).padStart(2,'0')}-${String(dia).padStart(2,'0')}`;
+}
+
+function feriadosNacionaisDoAno(ano){
+  const pascoa = pascoaIso(ano);
+  return [
+    `${ano}-01-01`,             // confraternização universal
+    addDays(pascoa, -47),       // carnaval (terça-feira)
+    addDays(pascoa, -2),        // sexta-feira santa
+    `${ano}-04-21`,             // tiradentes
+    `${ano}-05-01`,             // dia do trabalho
+    addDays(pascoa, 60),        // corpus christi
+    `${ano}-07-09`,             // revolução constitucionalista (SP)
+    `${ano}-09-07`,             // independência
+    `${ano}-10-12`,             // nossa senhora aparecida
+    `${ano}-11-02`,             // finados
+    `${ano}-11-15`,             // proclamação da república
+    `${ano}-11-20`,             // consciência negra
+    `${ano}-12-25`              // natal
+  ];
+}
+
+function todosFeriadosDoAno(ano){
+  const set = new Set(feriadosNacionaisDoAno(ano));
+  (state.feriadosExtras||[]).forEach(f=>{ if(f.data) set.add(f.data); });
+  return set;
+}
+
+function ehDiaUtil(iso){
+  const d = new Date(iso+'T00:00:00');
+  const diaSemana = d.getDay(); // 0=domingo, 6=sábado
+  if(diaSemana===0 || diaSemana===6) return false;
+  const ano = Number(iso.slice(0,4));
+  return !todosFeriadosDoAno(ano).has(iso);
+}
+
+function proximoDiaUtil(iso){
+  let atual = iso;
+  let tentativas = 0;
+  while(!ehDiaUtil(atual) && tentativas < 30){
+    atual = addDays(atual, 1);
+    tentativas++;
+  }
+  return atual;
+}
+
+function calcularPrazo(dataBase, dias){
+  return proximoDiaUtil(addDays(dataBase, dias));
+}
 function normaliza(str){ return String(str||'').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim(); }
 function escapeHtml(str){ const d = document.createElement('div'); d.textContent = str==null?'':str; return d.innerHTML; }
 function labelCategoria(p){ const c = CATEGORIAS_PARECER.find(x=>x.id===p.categoriaParecer); const base = c ? c.label : p.categoriaParecer; return p.categoriaParecer==='outros' && p.categoriaParecerOutros ? p.categoriaParecerOutros : base; }
@@ -634,7 +695,7 @@ function efetuarReatribuicao(parecerId, novoParceristaId){
   p.atribuicoes.push({ parceristaId: novoParceristaId, data: todayIso() });
   p.dataSolicitacaoAtual = todayIso();
   p.faseAtual = 1;
-  p.prazoFase1 = addDays(todayIso(), 14);
+  p.prazoFase1 = calcularPrazo(todayIso(), 14);
   p.prazoFase2 = null;
   p.emailEnviadoFase1 = false;
   flashMsg = `Parecer nº ${pad(p.numero)} reatribuído de ${escapeHtml(nomeParecerista(parceristaAnteriorId))} para ${escapeHtml(nomeParecerista(novoParceristaId))}. Novo prazo: ${fmtDate(p.prazoFase1)}.`;
@@ -706,7 +767,7 @@ function abrirModalFase2Nao(parecerId){
 
 function preencherTemplate(template, parecer){
   const saudacao = parceristaAtualId(parecer) ? nomeParecerista(parceristaAtualId(parecer)) : 'responsável pelo departamento';
-  const novoPrazo = addDays(parecer.dataSolicitacaoAtual, 21);
+  const novoPrazo = calcularPrazo(parecer.dataSolicitacaoAtual, 21);
   return template
     .replaceAll('{parecerista}', saudacao)
     .replaceAll('{processo}', numeroProcesso(parecer))
@@ -755,7 +816,7 @@ function abrirModalFase1Nao(parecerId){
 
     p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', parceristaId });
     p.faseAtual = 2;
-    p.prazoFase2 = addDays(p.dataSolicitacaoAtual, 21);
+    p.prazoFase2 = calcularPrazo(p.dataSolicitacaoAtual, 21);
     p.emailEnviadoFase1 = true;
     flashMsg = `E-mail preparado para ${escapeHtml(nomeParecerista(parceristaId))}. Novo prazo do parecer nº ${pad(p.numero)}: ${fmtDate(p.prazoFase2)}.`;
     saveState();
@@ -861,6 +922,7 @@ function render(){
     document.getElementById('btn-novo').onclick = abrirModalNovo;
     document.getElementById('btn-pareceristas').onclick = () => abrirModalPareceristas();
     document.getElementById('btn-departamentos').onclick = abrirModalDepartamentos;
+    document.getElementById('btn-feriados').onclick = abrirModalFeriados;
     document.getElementById('btn-grupos').onclick = abrirModalGrupos;
     document.getElementById('btn-conflitos').onclick = abrirModalConflitos;
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
@@ -930,6 +992,7 @@ function paginaPareceres(lista){
       <button class="btn" id="btn-novo">+ Novo parecer</button>
       <button class="btn-ghost" id="btn-pareceristas">Pareceristas</button>
       <button class="btn-ghost" id="btn-departamentos">Departamentos</button>
+      <button class="btn-ghost" id="btn-feriados">Feriados</button>
       <button class="btn-ghost" id="btn-grupos">Grupos de departamentos</button>
       <button class="btn-ghost" id="btn-conflitos">Conflitos de interesse</button>
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
@@ -1303,7 +1366,7 @@ function abrirModalNovo(){
       atribuicoes: semParecerista ? [] : [{ parceristaId, data: hoje }],
       dataSolicitacaoAtual: hoje,
       faseAtual: 1,
-      prazoFase1: addDays(hoje, 14),
+      prazoFase1: calcularPrazo(hoje, 14),
       prazoFase2: null,
       emailEnviadoFase1: false,
       dataConclusao: null,
@@ -1761,6 +1824,75 @@ function abrirModalDepartamentos(){
       if(departamentosConhecidos().some(d=>normaliza(d)===normaliza(val))){ erro.textContent = 'Esse departamento já está na lista.'; return; }
       state.departamentosExtras = state.departamentosExtras || [];
       state.departamentosExtras.push(val);
+      saveState();
+      desenhar();
+    };
+  };
+  desenhar();
+}
+
+/* ---------- Modal: feriados ---------- */
+
+function abrirModalFeriados(){
+  const overlay = criarOverlay();
+  const desenhar = () => {
+    const anoAtual = Number(todayIso().slice(0,4));
+    const nacionais = [anoAtual, anoAtual+1]
+      .flatMap(ano => feriadosNacionaisDoAno(ano).map(data=>({data, origem:'nacional/SP'})))
+      .sort((a,b)=>a.data.localeCompare(b.data));
+    const extras = (state.feriadosExtras||[]).slice().sort((a,b)=>a.data.localeCompare(b.data));
+
+    overlay.innerHTML = `
+      <div class="modal modal-wide">
+        <h2>Feriados</h2>
+        <p class="field-hint" style="margin-bottom:1rem;">
+          Prazos que vencem em fim de semana ou feriado são automaticamente empurrados para o próximo dia útil. Feriados nacionais e o estadual de SP (9 de julho) já são calculados sozinhos, inclusive os móveis (Carnaval, Sexta-feira Santa, Corpus Christi). Cadastre aqui outros que também devem valer — ponto facultativo, feriado municipal, recesso da USP etc.
+        </p>
+        <p style="font-size:0.78rem;color:var(--ink-soft);margin:0 0 0.4rem;">Calculados automaticamente (${anoAtual} e ${anoAtual+1}):</p>
+        <div class="list-scroll" style="max-height:140px;margin-bottom:1rem;">
+          ${nacionais.map(f=>`<div class="parecerista-row"><span>${fmtDate(f.data)} <span class="muted">— ${escapeHtml(f.data)}</span></span></div>`).join('')}
+        </div>
+        <p style="font-size:0.78rem;color:var(--ink-soft);margin:0 0 0.4rem;">Cadastrados manualmente:</p>
+        ${extras.length ? `
+          <div class="list-scroll" style="max-height:160px;">
+            ${extras.map((f,i)=>`
+              <div class="parecerista-row">
+                <span>${fmtDate(f.data)} — ${escapeHtml(f.descricao||'sem descrição')}</span>
+                <button class="icon-btn danger" data-del-feriado="${i}" aria-label="Remover feriado" title="Remover">✕</button>
+              </div>
+            `).join('')}
+          </div>
+        ` : `<p class="field-hint">Nenhum feriado adicional cadastrado.</p>`}
+        <div class="field-row" style="margin-top:1rem;">
+          <div class="field"><label for="f-feriado-data">Data</label><input id="f-feriado-data" type="date"></div>
+          <div class="field"><label for="f-feriado-desc">Descrição</label><input id="f-feriado-desc" type="text" placeholder="Ex: Recesso da USP"></div>
+        </div>
+        <div class="field-error" id="err-feriado"></div>
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn-ghost btn-sm" id="add-feriado">Adicionar feriado</button>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-feriados">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('fechar-feriados').onclick = () => { fecharOverlay(); render(); };
+    document.querySelectorAll('[data-del-feriado]').forEach(el=>{
+      el.onclick = () => {
+        state.feriadosExtras.splice(Number(el.dataset.delFeriado), 1);
+        saveState();
+        desenhar();
+      };
+    });
+    document.getElementById('add-feriado').onclick = () => {
+      const data = document.getElementById('f-feriado-data').value;
+      const descricao = document.getElementById('f-feriado-desc').value.trim();
+      const erro = document.getElementById('err-feriado');
+      erro.textContent = '';
+      if(!data){ erro.textContent = 'Selecione uma data.'; return; }
+      state.feriadosExtras = state.feriadosExtras || [];
+      if(state.feriadosExtras.some(f=>f.data===data)){ erro.textContent = 'Essa data já está cadastrada.'; return; }
+      state.feriadosExtras.push({ data, descricao });
       saveState();
       desenhar();
     };
