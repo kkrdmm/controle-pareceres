@@ -258,6 +258,8 @@ let state = null;
 let filtro = 'todos';
 let filtroTexto = '';
 let ordenacao = { coluna: null, direcao: 'asc' };
+let filtroTextoReciprocidade = '';
+let ordenacaoReciprocidade = { coluna: null, direcao: 'asc' };
 let abaAtual = 'pareceres';
 let flashMsg = null;
 let chartInstances = {};
@@ -969,6 +971,30 @@ function render(){
     });
   }
 
+  if(abaAtual === 'dashboard'){
+    const buscaRecip = document.getElementById('f-busca-reciprocidade');
+    if(buscaRecip){
+      buscaRecip.oninput = (e) => {
+        filtroTextoReciprocidade = e.target.value;
+        const cursor = e.target.selectionStart;
+        render();
+        const novoBusca = document.getElementById('f-busca-reciprocidade');
+        if(novoBusca){ novoBusca.focus(); novoBusca.setSelectionRange(cursor, cursor); }
+      };
+    }
+    document.querySelectorAll('[data-ordenar-reciprocidade]').forEach(el=>{
+      el.onclick = () => {
+        const coluna = el.dataset.ordenarReciprocidade;
+        if(ordenacaoReciprocidade.coluna === coluna){
+          ordenacaoReciprocidade.direcao = ordenacaoReciprocidade.direcao === 'asc' ? 'desc' : 'asc';
+        } else {
+          ordenacaoReciprocidade = { coluna, direcao: 'asc' };
+        }
+        render();
+      };
+    });
+  }
+
   document.querySelectorAll('[data-alerta-fase1-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase1Sim); });
   document.querySelectorAll('[data-alerta-fase1-nao]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.alertaFase1Nao); });
   document.querySelectorAll('[data-alerta-fase2-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase2Sim); });
@@ -1071,6 +1097,25 @@ function thOrdenavel(label, coluna){
   return `<th data-ordenar="${coluna}" style="cursor:pointer;user-select:none;">${label} <span style="opacity:${ativo?1:0.4};font-size:0.75em;">${seta}</span></th>`;
 }
 
+function thOrdenavelReciprocidade(label, coluna){
+  const ativo = ordenacaoReciprocidade.coluna === coluna;
+  const seta = ativo ? (ordenacaoReciprocidade.direcao==='asc' ? '▲' : '▼') : '⇅';
+  return `<th data-ordenar-reciprocidade="${coluna}" style="cursor:pointer;user-select:none;">${label} <span style="opacity:${ativo?1:0.4};font-size:0.75em;">${seta}</span></th>`;
+}
+
+function ordenarReciprocidade(lista){
+  const copia = lista.slice();
+  const coluna = ordenacaoReciprocidade.coluna || 'saldo';
+  const dir = (ordenacaoReciprocidade.coluna ? (ordenacaoReciprocidade.direcao === 'asc' ? 1 : -1) : 1);
+  copia.sort((a,b)=>{
+    let va = a[coluna], vb = b[coluna];
+    const numerico = ['deu','recebeu','saldo'].includes(coluna);
+    const cmp = numerico ? (va - vb) : String(va).localeCompare(String(vb), 'pt-BR', { numeric:true, sensitivity:'base' });
+    return cmp * dir;
+  });
+  return copia;
+}
+
 function emptyState(){
   if(filtroTexto.trim()){
     return `<div class="empty-state"><p class="big">Nenhum resultado para "${escapeHtml(filtroTexto)}"</p><p>Tente outro termo ou limpe a busca.</p></div>`;
@@ -1102,10 +1147,14 @@ function paginaDashboard(){
     ...naoEmitidos[id]
   })).sort((a,b)=> (b.fase1+b.fase2) - (a.fase1+a.fase2));
 
-  const reciprocidade = state.pareceristas
-    .map(p=>({ nome:p.nome, departamento:p.departamento||'—', deu: contarAtribuicoes(p.id), recebeu: contarAvaliacoesRecebidas(p.id), saldo: saldoReciprocidade(p.id) }))
-    .filter(r=> r.deu>0 || r.recebeu>0)
-    .sort((a,b)=> a.saldo - b.saldo);
+  let reciprocidade = state.pareceristas
+    .map(p=>({ id:p.id, nome:p.nome, departamento:p.departamento||'—', deu: contarAtribuicoes(p.id), recebeu: contarAvaliacoesRecebidas(p.id), saldo: saldoReciprocidade(p.id) }))
+    .filter(r=> r.deu>0 || r.recebeu>0);
+  if(filtroTextoReciprocidade.trim()){
+    const termo = normaliza(filtroTextoReciprocidade);
+    reciprocidade = reciprocidade.filter(r => normaliza(r.nome).includes(termo) || normaliza(r.departamento).includes(termo));
+  }
+  reciprocidade = ordenarReciprocidade(reciprocidade);
 
   return `
     <div class="dash-grid">
@@ -1130,12 +1179,15 @@ function paginaDashboard(){
       <div class="chart-card">
         <h3>Balanço de reciprocidade</h3>
         <p class="field-hint" style="margin-top:-0.4rem;">Quantas vezes cada um avaliou (deu) versus foi avaliado (recebeu), pelo nº USP do autor. Saldo negativo indica quem está "devendo" um parecer.</p>
+        <input id="f-busca-reciprocidade" type="text" placeholder="Buscar por nome ou departamento..." value="${escapeHtml(filtroTextoReciprocidade)}" style="width:100%;padding:0.45rem 0.7rem;border:1px solid var(--line);border-radius:20px;background:var(--paper);font-size:0.82rem;margin-bottom:0.7rem;">
         ${reciprocidade.length ? `
           <table class="rank-table">
-            <thead><tr><th>Parecerista</th><th>Depto.</th><th>Avaliou</th><th>Foi avaliado</th><th>Saldo</th></tr></thead>
+            <thead><tr>
+              ${thOrdenavelReciprocidade('Parecerista','nome')}${thOrdenavelReciprocidade('Depto.','departamento')}${thOrdenavelReciprocidade('Avaliou','deu')}${thOrdenavelReciprocidade('Foi avaliado','recebeu')}${thOrdenavelReciprocidade('Saldo','saldo')}
+            </tr></thead>
             <tbody>${reciprocidade.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.deu}</td><td>${r.recebeu}</td><td style="color:${r.saldo<0?'var(--red)':(r.saldo>0?'var(--green)':'var(--ink-soft)')}">${r.saldo>0?'+':''}${r.saldo}</td></tr>`).join('')}</tbody>
           </table>
-        ` : `<p class="field-hint">Sem dados suficientes ainda — o nº USP do autor avaliado precisa ser preenchido nos pareceres para calcular o saldo.</p>`}
+        ` : `<p class="field-hint">${filtroTextoReciprocidade.trim() ? `Nenhum resultado para "${escapeHtml(filtroTextoReciprocidade)}".` : 'Sem dados suficientes ainda — o nº USP do autor avaliado precisa ser preenchido nos pareceres para calcular o saldo.'}</p>`}
       </div>
     </div>
   `;
