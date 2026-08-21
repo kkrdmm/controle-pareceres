@@ -306,6 +306,7 @@ async function loadState(){
     if(!state.departamentosExtras) state.departamentosExtras = [];
     if(!state.feriadosExtras) state.feriadosExtras = [];
     if(!state.departamentosExtras.some(d => normaliza(d)==='adm')) state.departamentosExtras.push('ADM');
+    ordenarPareceristasAlfabeticamente();
   }catch(e){
     state = defaultState();
   }
@@ -562,7 +563,7 @@ function escapeHtml(str){ const d = document.createElement('div'); d.textContent
 function labelCategoria(p){ const c = CATEGORIAS_PARECER.find(x=>x.id===p.categoriaParecer); const base = c ? c.label : p.categoriaParecer; return p.categoriaParecer==='outros' && p.categoriaParecerOutros ? p.categoriaParecerOutros : base; }
 function numeroProcesso(p){ return `${p.processoAno}/${p.processoCodigo}`; }
 
-function parceristasAtivos(){ return state.pareceristas.filter(p=>p.ativo); }
+function parceristasAtivos(){ return state.pareceristas.filter(p=>p.ativo).sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{sensitivity:'base'})); }
 
 function parceristaAtualId(parecer){
   const at = parecer.atribuicoes;
@@ -583,6 +584,10 @@ function parceristaDoInicialDoProcesso(ano, codigo, categoria){
 function nomeParecerista(id){
   const p = state.pareceristas.find(x=>x.id===id);
   return p ? p.nome : '—';
+}
+
+function ordenarPareceristasAlfabeticamente(){
+  state.pareceristas.sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{sensitivity:'base'}));
 }
 
 function descricaoResponsavel(parecer){
@@ -1517,7 +1522,8 @@ function abrirModalPareceristas(aviso){
 
     const render_ = () => {
       const departamentos = departamentosConhecidos();
-      const linhas = state.pareceristas.map(p=>{
+      const listaOrdenada = state.pareceristas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{sensitivity:'base'}));
+      const linhas = listaOrdenada.map(p=>{
         if(editandoId === p.id){
           return `
             <tr>
@@ -1644,6 +1650,7 @@ function abrirModalPareceristas(aviso){
         if(!nome){ erro.textContent = 'Informe o nome completo.'; return; }
         if(nusp && state.pareceristas.some(x=>x.id===nusp)){ erro.textContent = 'Já existe um parecerista cadastrado com esse nº USP.'; return; }
         state.pareceristas.push({ id: nusp || uid(), nome, email, departamento, categoria, comissaoPesquisa, ativo:true });
+        ordenarPareceristasAlfabeticamente();
         saveState(); render_();
       };
     };
@@ -1708,6 +1715,7 @@ function abrirModalPareceristas(aviso){
           novos++;
         }
       });
+      ordenarPareceristasAlfabeticamente();
       saveState();
       aviso = null;
       subaba = 'lista';
