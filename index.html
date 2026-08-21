@@ -642,6 +642,8 @@ function conflitantesDe(nUSP){
 function sugerirParecerista(departamento, excluirIds, apenasComissao){
   excluirIds = excluirIds || [];
   let ativos = parceristasAtivos().filter(p=> !excluirIds.includes(p.id));
+  const naoStaff = ativos.filter(p=> !p.staff);
+  ativos = naoStaff.length ? naoStaff : ativos; // evita sugerir staff, exceto se não houver mais ninguém
   if(apenasComissao) ativos = ativos.filter(p=>p.comissaoPesquisa);
   const foraDepto = ativos.filter(p=> normaliza(p.departamento) !== normaliza(departamento));
   const grupo = grupoDoDepartamento(departamento);
