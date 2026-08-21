@@ -567,6 +567,17 @@ function parceristaAtualId(parecer){
   return at && at.length ? at[at.length-1].parceristaId : null;
 }
 
+function parceristaDoInicialDoProcesso(ano, codigo, categoria){
+  if(!ano || !codigo || !categoria) return null;
+  const anterior = state.pareceres.find(p=>
+    p.processoAno === ano && p.processoCodigo === codigo &&
+    p.categoriaParecer === categoria && p.tipoParecer === 'Inicial'
+  );
+  if(!anterior) return null;
+  const id = parceristaAtualId(anterior);
+  return id ? (state.pareceristas.find(x=>x.id===id) || null) : null;
+}
+
 function nomeParecerista(id){
   const p = state.pareceristas.find(x=>x.id===id);
   return p ? p.nome : '—';
@@ -1206,15 +1217,26 @@ function abrirModalNovo(){
   const overlay = criarOverlay();
   const departamentos = departamentosConhecidos();
 
-  const montarOpcoesParecerista = (departamento, autorNUSP) => {
+  const montarOpcoesParecerista = (departamento, autorNUSP, contexto) => {
+    contexto = contexto || {};
     const excluir = autorNUSP ? [autorNUSP, ...conflitantesDe(autorNUSP)] : [];
     const ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
-    const sugerido = departamento ? sugerirParecerista(departamento, excluir) : null;
+    let continuidade = null;
+    if(contexto.tipoParecer && contexto.tipoParecer !== 'Inicial' && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
+      const doInicial = parceristaDoInicialDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
+      if(doInicial && ativos.some(p=>p.id===doInicial.id)) continuidade = doInicial;
+    }
+    const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir) : null);
     const grupo = departamento ? grupoDoDepartamento(departamento) : null;
     return ativos.map(p=>{
       const mesmoDepto = departamento && normaliza(p.departamento)===normaliza(departamento);
       const relacionado = !mesmoDepto && grupo && grupo.some(d=>normaliza(d)===normaliza(p.departamento));
-      const tag = sugerido && p.id===sugerido.id ? ' — sugerido' : (mesmoDepto ? ' — mesmo departamento' : (relacionado ? ' — departamento relacionado' : ''));
+      let tag;
+      if(continuidade && p.id===continuidade.id) tag = ' — avaliou o parecer inicial deste processo';
+      else if(sugerido && p.id===sugerido.id) tag = ' — sugerido';
+      else if(mesmoDepto) tag = ' — mesmo departamento';
+      else if(relacionado) tag = ' — departamento relacionado';
+      else tag = '';
       return `<option value="${p.id}" ${sugerido && p.id===sugerido.id ? 'selected':''}>${escapeHtml(p.nome)} — nº USP ${escapeHtml(p.id)}${tag}</option>`;
     }).join('');
   };
@@ -1255,6 +1277,7 @@ function abrirModalNovo(){
       </div>
       <div class="field" id="campo-parecerista-wrap">
         <label for="f-parecerista">Parecerista (sugestão automática por departamento, reciprocidade e rotatividade)</label>
+        <p class="field-hint" id="aviso-continuidade" style="display:none;color:var(--brass-dark);"></p>
         <select id="f-parecerista">${montarOpcoesParecerista('', '')}</select>
         <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
           <input id="f-parecerista-usp" type="text" readonly style="flex:1;background:var(--paper-raised);">
@@ -1294,7 +1317,10 @@ function abrirModalNovo(){
   };
   const ligarEventosTipo = () => {
     const tipoEl = document.getElementById('f-tipo');
-    if(tipoEl){ tipoEl.onchange = atualizarVisibilidadeParecerista; tipoEl.oninput = atualizarVisibilidadeParecerista; }
+    if(tipoEl){
+      tipoEl.onchange = () => { atualizarVisibilidadeParecerista(); atualizarSugestao(); };
+      tipoEl.oninput = () => { atualizarVisibilidadeParecerista(); atualizarSugestao(); };
+    }
     atualizarVisibilidadeParecerista();
   };
   const atualizarCampoUsp = () => {
@@ -1302,11 +1328,30 @@ function abrirModalNovo(){
     const p = state.pareceristas.find(x=>x.id===id);
     document.getElementById('f-parecerista-usp').value = p ? `${p.nome} — nº USP ${p.id}` : '';
   };
+  const contextoAtual = () => ({
+    ano: document.getElementById('f-ano').value.trim(),
+    codigo: document.getElementById('f-codigo').value.trim(),
+    categoria: document.getElementById('f-categoria').value,
+    tipoParecer: (document.getElementById('f-tipo') ? document.getElementById('f-tipo').value.trim() : '')
+  });
   const atualizarSugestao = () => {
     const departamento = document.getElementById('f-departamento').value;
     const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
-    document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP);
+    const contexto = contextoAtual();
+    document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP, contexto);
     atualizarCampoUsp();
+    const avisoContinuidade = document.getElementById('aviso-continuidade');
+    if(contexto.tipoParecer && contexto.tipoParecer !== 'Inicial' && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
+      const doInicial = parceristaDoInicialDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
+      if(doInicial){
+        avisoContinuidade.style.display = 'block';
+        avisoContinuidade.textContent = `Este processo já foi avaliado inicialmente por ${doInicial.nome}${doInicial.ativo ? ' — mantendo o mesmo parecerista para continuidade.' : ' — porém essa pessoa está inativa no momento, então a sugestão segue o rodízio normal.'}`;
+      } else {
+        avisoContinuidade.style.display = 'none';
+      }
+    } else {
+      avisoContinuidade.style.display = 'none';
+    }
   };
   document.getElementById('f-parecerista').onchange = atualizarCampoUsp;
   document.getElementById('copiar-usp-parecerista').onclick = () => {
@@ -1332,7 +1377,10 @@ function abrirModalNovo(){
     document.getElementById('campo-outros').style.display = e.target.value==='outros' ? 'block' : 'none';
     document.getElementById('campo-tipo').innerHTML = montarCampoTipo(e.target.value);
     ligarEventosTipo();
+    atualizarSugestao();
   };
+  document.getElementById('f-ano').oninput = atualizarSugestao;
+  document.getElementById('f-codigo').oninput = atualizarSugestao;
   document.getElementById('f-departamento').oninput = atualizarSugestao;
   document.getElementById('f-autor-nusp').oninput = atualizarSugestao;
   document.getElementById('cancelar').onclick = fecharOverlay;
