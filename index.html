@@ -1539,6 +1539,7 @@ function abrirModalPareceristas(aviso){
                 </select>
               </td>
               <td style="text-align:center;"><input type="checkbox" class="pe-comissao" ${p.comissaoPesquisa?'checked':''}></td>
+              <td style="text-align:center;"><input type="checkbox" class="pe-staff" ${p.staff?'checked':''}></td>
               <td>
                 <div class="row-actions">
                   <button class="icon-btn" data-salvar-edicao="${p.id}" aria-label="Salvar" title="Salvar">✓</button>
@@ -1558,6 +1559,9 @@ function abrirModalPareceristas(aviso){
             <td style="text-align:center;">
               <button class="toggle${p.comissaoPesquisa?' on':''}" data-toggle-comissao="${p.id}" aria-label="Marcar ${escapeHtml(p.nome)} como membro da comissão de pesquisa" title="Comissão de pesquisa"></button>
             </td>
+            <td style="text-align:center;">
+              <button class="toggle${p.staff?' on':''}" data-toggle-staff="${p.id}" aria-label="Marcar ${escapeHtml(p.nome)} como staff" title="Staff"></button>
+            </td>
             <td>
               <div class="row-actions">
                 <button class="toggle${p.ativo?' on':''}" data-toggle="${p.id}" aria-label="Ativar ou desativar ${escapeHtml(p.nome)}"></button>
@@ -1573,7 +1577,7 @@ function abrirModalPareceristas(aviso){
         ${state.pareceristas.length===0 ? `<p class="field-hint">Nenhum parecerista cadastrado ainda. Use a aba "Importar planilha" ou o formulário abaixo.</p>` : `
           <div class="list-scroll mini-table-wrap">
             <table class="mini-table">
-              <thead><tr><th>Nome</th><th>Nº USP</th><th>E-mail</th><th>Departamento</th><th>Categoria</th><th>Comissão de pesquisa</th><th>Ações</th></tr></thead>
+              <thead><tr><th>Nome</th><th>Nº USP</th><th>E-mail</th><th>Departamento</th><th>Categoria</th><th>Comissão de pesquisa</th><th>Staff</th><th>Ações</th></tr></thead>
               <tbody>${linhas}</tbody>
             </table>
           </div>
@@ -1599,6 +1603,10 @@ function abrirModalPareceristas(aviso){
             <label style="margin:0;">Comissão</label>
             <input type="checkbox" id="f-novo-comissao">
           </div>
+          <div class="field" style="display:flex;align-items:center;gap:0.4rem;">
+            <label style="margin:0;">Staff</label>
+            <input type="checkbox" id="f-novo-staff">
+          </div>
           <button class="btn btn-sm" id="add-parecerista">Adicionar</button>
         </div>
         <datalist id="lista-departamentos-novo">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
@@ -1607,6 +1615,7 @@ function abrirModalPareceristas(aviso){
 
       document.querySelectorAll('[data-toggle]').forEach(el=>{ el.onclick = () => { const p = state.pareceristas.find(x=>x.id===el.dataset.toggle); p.ativo=!p.ativo; saveState(); render_(); }; });
       document.querySelectorAll('[data-toggle-comissao]').forEach(el=>{ el.onclick = () => { const p = state.pareceristas.find(x=>x.id===el.dataset.toggleComissao); p.comissaoPesquisa=!p.comissaoPesquisa; saveState(); render_(); }; });
+      document.querySelectorAll('[data-toggle-staff]').forEach(el=>{ el.onclick = () => { const p = state.pareceristas.find(x=>x.id===el.dataset.toggleStaff); p.staff=!p.staff; saveState(); render_(); }; });
       const btnPadronizar = document.getElementById('padronizar-categorias');
       if(btnPadronizar){
         btnPadronizar.onclick = () => {
@@ -1635,6 +1644,7 @@ function abrirModalPareceristas(aviso){
           p.departamento = linha.querySelector('.pe-depto').value.trim();
           p.categoria = linha.querySelector('.pe-cat').value;
           p.comissaoPesquisa = linha.querySelector('.pe-comissao').checked;
+          p.staff = linha.querySelector('.pe-staff').checked;
           editandoId = null;
           saveState(); render_();
         };
@@ -1646,11 +1656,12 @@ function abrirModalPareceristas(aviso){
         const departamento = document.getElementById('f-novo-depto').value.trim();
         const categoria = document.getElementById('f-novo-cat').value;
         const comissaoPesquisa = document.getElementById('f-novo-comissao').checked;
+        const staff = document.getElementById('f-novo-staff').checked;
         const erro = document.getElementById('err-novo-parecerista');
         erro.textContent = '';
         if(!nome){ erro.textContent = 'Informe o nome completo.'; return; }
         if(nusp && state.pareceristas.some(x=>x.id===nusp)){ erro.textContent = 'Já existe um parecerista cadastrado com esse nº USP.'; return; }
-        state.pareceristas.push({ id: nusp || uid(), nome, email, departamento, categoria, comissaoPesquisa, ativo:true });
+        state.pareceristas.push({ id: nusp || uid(), nome, email, departamento, categoria, comissaoPesquisa, staff, ativo:true });
         ordenarPareceristasAlfabeticamente();
         saveState(); render_();
       };
@@ -1753,8 +1764,10 @@ function parseLinhaParecerista(row){
   const categoria = normalizarCategoriaParecerista(acha(['categ','funcao','vinculo','cargo']));
   const comissaoTexto = normaliza(acha(['comissao']));
   const comissaoPesquisa = ['sim','x','s','yes','true','1'].includes(comissaoTexto);
+  const staffTexto = normaliza(acha(['staff']));
+  const staff = ['sim','x','s','yes','true','1'].includes(staffTexto);
   if(!nome) return null;
-  return { id: nUSP || uid(), nome, email, departamento, categoria, comissaoPesquisa, ativo:true };
+  return { id: nUSP || uid(), nome, email, departamento, categoria, comissaoPesquisa, staff, ativo:true };
 }
 
 /* ---------- Modal: backup e sincronização ---------- */
