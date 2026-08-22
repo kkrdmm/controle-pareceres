@@ -167,9 +167,11 @@
   .mini-table td{padding:0.45rem 0.5rem;border-bottom:1px solid var(--line);vertical-align:middle;}
   .mini-table tr:last-child td{border-bottom:none;}
   .mini-table input, .mini-table select{width:100%;padding:0.35rem 0.45rem;border:1px solid var(--line);border-radius:5px;background:var(--paper);color:var(--ink);font-family:inherit;font-size:0.78rem;}
-  .add-form-grid{display:grid;grid-template-columns:1.3fr 1fr 1.3fr 1.2fr 1fr auto;gap:0.5rem;align-items:end;margin-top:1rem;}
+  .add-form-grid{display:grid;grid-template-columns:1.3fr 1fr 1.3fr 1.2fr 1fr;gap:0.5rem;align-items:end;margin-top:1rem;}
   .add-form-grid .field{margin-bottom:0;}
   .add-form-grid .field label{font-size:0.7rem;}
+  .add-form-toggles{display:flex;align-items:center;gap:1.6rem;margin-top:0.9rem;flex-wrap:wrap;}
+  .add-form-toggles label{display:flex;align-items:center;gap:0.5rem;font-size:0.83rem;color:var(--ink-soft);margin:0;cursor:pointer;}
   @media (max-width:700px){ .add-form-grid{grid-template-columns:1fr 1fr;} }
 
   .modal-tabs{display:flex;gap:1rem;margin-bottom:1.1rem;border-bottom:1px solid var(--line);}
@@ -1164,6 +1166,9 @@ function paginaDashboard(){
   }
   reciprocidade = ordenarReciprocidade(reciprocidade);
 
+  const { todosDeptos: todosDeptosGrafico } = calcularDadosDepartamento();
+  const alturaGraficoDepto = Math.max(200, todosDeptosGrafico.length * 32 + 40);
+
   return `
     <div class="dash-grid">
       <div class="metric-card"><div class="num">${total}</div><div class="lbl">Pareceres registrados</div></div>
@@ -1173,8 +1178,8 @@ function paginaDashboard(){
     <div class="chart-grid">
       <div class="chart-card"><h3>Situação atual</h3>${graficosDisponiveis() ? `<canvas id="chart-status"></canvas>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card"><h3>Pareceres por categoria</h3>${graficosDisponiveis() ? `<canvas id="chart-categoria"></canvas>` : avisoGraficoIndisponivel()}</div>
-      <div class="chart-card"><h3>Pareceres solicitados por departamento</h3>${graficosDisponiveis() ? `<canvas id="chart-departamento"></canvas>` : avisoGraficoIndisponivel()}</div>
-      <div class="chart-card"><h3>Pareceres emitidos por departamento</h3>${graficosDisponiveis() ? `<canvas id="chart-departamento-emitidos"></canvas>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres solicitados por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento"></canvas></div>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres emitidos por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento-emitidos"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
         <h3>Pareceristas que não emitiram no prazo</h3>
         ${ranking.length ? `
@@ -1209,6 +1214,23 @@ function avisoGraficoIndisponivel(){
   return `<p class="field-hint">Não foi possível carregar a biblioteca de gráficos (a rede pode estar bloqueando recursos externos). Os números continuam corretos nas outras tabelas desta página — tente recarregar a página com internet disponível.</p>`;
 }
 
+function calcularDadosDepartamento(){
+  const porDepto = {};
+  state.pareceres.forEach(p=>{ const l = p.departamento || 'Não informado'; porDepto[l] = (porDepto[l]||0)+1; });
+
+  const porDeptoEmitido = {};
+  state.pareceres.filter(p=>p.dataConclusao).forEach(p=>{
+    const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
+    const l = (parecerista && parecerista.departamento) || 'Não informado';
+    porDeptoEmitido[l] = (porDeptoEmitido[l]||0)+1;
+  });
+
+  const todosDeptos = Array.from(new Set([...departamentosConhecidos(), ...Object.keys(porDepto), ...Object.keys(porDeptoEmitido)]))
+    .sort((a,b)=> a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+
+  return { todosDeptos, porDepto, porDeptoEmitido };
+}
+
 function montarGraficos(){
   if(!graficosDisponiveis()) return;
   try{
@@ -1237,29 +1259,23 @@ function montarGraficos(){
       });
     }
 
-    const porDepto = {};
-    state.pareceres.forEach(p=>{ const l = p.departamento || 'Não informado'; porDepto[l] = (porDepto[l]||0)+1; });
+    const { todosDeptos, porDepto, porDeptoEmitido } = calcularDadosDepartamento();
+
     const ctxDepto = document.getElementById('chart-departamento');
     if(ctxDepto){
       chartInstances.departamento = new Chart(ctxDepto, {
         type:'bar',
-        data:{ labels:Object.keys(porDepto), datasets:[{ data:Object.values(porDepto), backgroundColor:'#1C2B45' }] },
-        options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
+        data:{ labels:todosDeptos, datasets:[{ data:todosDeptos.map(d=>porDepto[d]||0), backgroundColor:'#1C2B45' }] },
+        options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
       });
     }
 
-    const porDeptoEmitido = {};
-    state.pareceres.filter(p=>p.dataConclusao).forEach(p=>{
-      const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
-      const l = (parecerista && parecerista.departamento) || 'Não informado';
-      porDeptoEmitido[l] = (porDeptoEmitido[l]||0)+1;
-    });
     const ctxDeptoEmitidos = document.getElementById('chart-departamento-emitidos');
     if(ctxDeptoEmitidos){
       chartInstances.departamentoEmitidos = new Chart(ctxDeptoEmitidos, {
         type:'bar',
-        data:{ labels:Object.keys(porDeptoEmitido), datasets:[{ data:Object.values(porDeptoEmitido), backgroundColor:'#52734F' }] },
-        options:{ indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
+        data:{ labels:todosDeptos, datasets:[{ data:todosDeptos.map(d=>porDeptoEmitido[d]||0), backgroundColor:'#52734F' }] },
+        options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
       });
     }
   }catch(e){
@@ -1622,15 +1638,11 @@ function abrirModalPareceristas(aviso){
               ${PARECERISTA_CATEGORIAS.map(c=>`<option value="${c}">${c}</option>`).join('')}
             </select>
           </div>
-          <div class="field" style="display:flex;align-items:center;gap:0.4rem;">
-            <label style="margin:0;">Comissão</label>
-            <input type="checkbox" id="f-novo-comissao">
-          </div>
-          <div class="field" style="display:flex;align-items:center;gap:0.4rem;">
-            <label style="margin:0;">Staff</label>
-            <input type="checkbox" id="f-novo-staff">
-          </div>
-          <button class="btn btn-sm" id="add-parecerista">Adicionar</button>
+        </div>
+        <div class="add-form-toggles">
+          <label><button type="button" class="toggle" id="f-novo-comissao"></button> Comissão de pesquisa</label>
+          <label><button type="button" class="toggle" id="f-novo-staff"></button> Staff</label>
+          <button class="btn btn-sm" id="add-parecerista" style="margin-left:auto;">Adicionar</button>
         </div>
         <datalist id="lista-departamentos-novo">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
         <div class="field-error" id="err-novo-parecerista"></div>
@@ -1672,14 +1684,16 @@ function abrirModalPareceristas(aviso){
           saveState(); render_();
         };
       });
+      document.getElementById('f-novo-comissao').onclick = (e) => e.target.classList.toggle('on');
+      document.getElementById('f-novo-staff').onclick = (e) => e.target.classList.toggle('on');
       document.getElementById('add-parecerista').onclick = () => {
         const nome = document.getElementById('f-novo-nome').value.trim();
         const nusp = document.getElementById('f-novo-nusp').value.trim();
         const email = document.getElementById('f-novo-email').value.trim();
         const departamento = document.getElementById('f-novo-depto').value.trim();
         const categoria = document.getElementById('f-novo-cat').value;
-        const comissaoPesquisa = document.getElementById('f-novo-comissao').checked;
-        const staff = document.getElementById('f-novo-staff').checked;
+        const comissaoPesquisa = document.getElementById('f-novo-comissao').classList.contains('on');
+        const staff = document.getElementById('f-novo-staff').classList.contains('on');
         const erro = document.getElementById('err-novo-parecerista');
         erro.textContent = '';
         if(!nome){ erro.textContent = 'Informe o nome completo.'; return; }
