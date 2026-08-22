@@ -1072,7 +1072,7 @@ function tabela(lista){
     return `
       <tr>
         <td class="col-num">Nº ${pad(p.numero)}</td>
-        <td class="col-title">${escapeHtml(numeroProcesso(p))}<span class="sub">${escapeHtml(labelCategoria(p))}${p.tipoParecer ? ' · '+escapeHtml(p.tipoParecer) : ''}${p.autorNUSP ? ' · autor '+escapeHtml(p.autorNUSP) : ''}</span></td>
+        <td class="col-title">${escapeHtml(numeroProcesso(p))}<span class="sub">${escapeHtml(labelCategoria(p))}${p.tipoParecer ? ' · '+escapeHtml(p.tipoParecer) : ''}${p.avaliadoPelaComissao ? ' · comissão de pesquisa' : ''}${p.autorNUSP ? ' · autor '+escapeHtml(p.autorNUSP) : ''}</span></td>
         <td class="muted">${escapeHtml(p.departamento||'—')}</td>
         <td>${escapeHtml(descricaoResponsavel(p))}</td>
         <td class="col-date">${fmtDate(p.dataConclusao ? p.dataConclusao : prazoAtivo)}${faseLabel}</td>
@@ -1280,14 +1280,18 @@ function abrirModalNovo(){
   const montarOpcoesParecerista = (departamento, autorNUSP, contexto) => {
     contexto = contexto || {};
     const excluir = autorNUSP ? [autorNUSP, ...conflitantesDe(autorNUSP)] : [];
-    const ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
+    let ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
+    if(contexto.apenasComissao) ativos = ativos.filter(p=>p.comissaoPesquisa);
     let continuidade = null;
     if(contexto.tipoParecer && contexto.tipoParecer !== 'Inicial' && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
       const doInicial = parceristaDoInicialDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
       if(doInicial && ativos.some(p=>p.id===doInicial.id)) continuidade = doInicial;
     }
-    const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir) : null);
+    const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir, contexto.apenasComissao) : null);
     const grupo = departamento ? grupoDoDepartamento(departamento) : null;
+    if(ativos.length === 0){
+      return contexto.apenasComissao ? `<option value="">— nenhum membro da comissão de pesquisa ativo —</option>` : '';
+    }
     return ativos.map(p=>{
       const mesmoDepto = departamento && normaliza(p.departamento)===normaliza(departamento);
       const relacionado = !mesmoDepto && grupo && grupo.some(d=>normaliza(d)===normaliza(p.departamento));
@@ -1328,6 +1332,13 @@ function abrirModalNovo(){
       <div class="field" id="campo-outros" style="display:none;">
         <label for="f-categoria-outros">Especifique a categoria</label>
         <input id="f-categoria-outros" type="text" placeholder="Descreva a categoria">
+      </div>
+      <div class="field" id="campo-comissao-outros" style="display:none;">
+        <label style="display:flex;align-items:center;gap:0.6rem;margin:0;">
+          <button type="button" class="toggle" id="f-comissao-outros"></button>
+          Avaliar pela comissão de pesquisa
+        </label>
+        <p class="field-hint">Restringe a sugestão e a seleção de parecerista aos membros da comissão de pesquisa, priorizando departamento relacionado e rodízio entre eles.</p>
       </div>
       <div class="field" id="campo-tipo"></div>
       <div class="field">
@@ -1392,7 +1403,8 @@ function abrirModalNovo(){
     ano: document.getElementById('f-ano').value.trim(),
     codigo: document.getElementById('f-codigo').value.trim(),
     categoria: document.getElementById('f-categoria').value,
-    tipoParecer: (document.getElementById('f-tipo') ? document.getElementById('f-tipo').value.trim() : '')
+    tipoParecer: (document.getElementById('f-tipo') ? document.getElementById('f-tipo').value.trim() : ''),
+    apenasComissao: document.getElementById('f-comissao-outros').classList.contains('on')
   });
   const atualizarSugestao = () => {
     const departamento = document.getElementById('f-departamento').value;
@@ -1430,11 +1442,18 @@ function abrirModalNovo(){
       status.textContent = 'Texto selecionado — use Ctrl+C (ou Cmd+C) para copiar.';
     }
   };
+  document.getElementById('f-comissao-outros').onclick = (e) => {
+    e.target.classList.toggle('on');
+    atualizarSugestao();
+  };
   atualizarCampoUsp();
   document.getElementById('campo-tipo').innerHTML = montarCampoTipo(document.getElementById('f-categoria').value);
   ligarEventosTipo();
   document.getElementById('f-categoria').onchange = (e) => {
-    document.getElementById('campo-outros').style.display = e.target.value==='outros' ? 'block' : 'none';
+    const ehOutros = e.target.value === 'outros';
+    document.getElementById('campo-outros').style.display = ehOutros ? 'block' : 'none';
+    document.getElementById('campo-comissao-outros').style.display = ehOutros ? 'block' : 'none';
+    if(!ehOutros) document.getElementById('f-comissao-outros').classList.remove('on');
     document.getElementById('campo-tipo').innerHTML = montarCampoTipo(e.target.value);
     ligarEventosTipo();
     atualizarSugestao();
@@ -1450,6 +1469,7 @@ function abrirModalNovo(){
     const autorNUSP = document.getElementById('f-autor-nusp').value.trim();
     const categoria = document.getElementById('f-categoria').value;
     const categoriaOutros = document.getElementById('f-categoria-outros').value.trim();
+    const avaliadoPelaComissao = categoria==='outros' && document.getElementById('f-comissao-outros').classList.contains('on');
     const tipoParecer = document.getElementById('f-tipo').value.trim();
     const departamento = document.getElementById('f-departamento').value.trim();
     const semParecerista = TIPOS_SEM_PARECERISTA.includes(tipoParecer);
@@ -1473,6 +1493,7 @@ function abrirModalNovo(){
       autorNUSP,
       categoriaParecer: categoria,
       categoriaParecerOutros: categoria==='outros' ? categoriaOutros : '',
+      avaliadoPelaComissao,
       tipoParecer,
       departamento,
       atribuicoes: semParecerista ? [] : [{ parceristaId, data: hoje }],
