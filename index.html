@@ -669,10 +669,11 @@ function sugerirParecerista(departamento, excluirIds, apenasComissao){
 }
 
 function departamentosConhecidos(){
-  const set = new Set();
-  state.pareceristas.forEach(p=>{ if(p.departamento) set.add(p.departamento); });
-  (state.departamentosExtras||[]).forEach(d=>{ if(d) set.add(d); });
-  return Array.from(set).sort();
+  const mapa = new Map();
+  const considerar = (d) => { if(!d) return; const n = normaliza(d); if(!mapa.has(n)) mapa.set(n, d); };
+  state.pareceristas.forEach(p=>considerar(p.departamento));
+  (state.departamentosExtras||[]).forEach(considerar);
+  return Array.from(mapa.values()).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
 }
 
 function statusParecer(p){
@@ -1215,17 +1216,28 @@ function avisoGraficoIndisponivel(){
 }
 
 function calcularDadosDepartamento(){
+  const mapaCanonico = new Map();
+  const canonizar = (d) => {
+    const bruto = d || 'Não informado';
+    const n = normaliza(bruto);
+    if(!mapaCanonico.has(n)) mapaCanonico.set(n, bruto);
+    return mapaCanonico.get(n);
+  };
+  // semeia primeiro com os departamentos "oficiais" (cadastro de pareceristas/extras),
+  // para que a grafia deles prevaleça sobre eventuais inconsistências em pareceres antigos
+  departamentosConhecidos().forEach(d=>canonizar(d));
+
   const porDepto = {};
-  state.pareceres.forEach(p=>{ const l = p.departamento || 'Não informado'; porDepto[l] = (porDepto[l]||0)+1; });
+  state.pareceres.forEach(p=>{ const l = canonizar(p.departamento); porDepto[l] = (porDepto[l]||0)+1; });
 
   const porDeptoEmitido = {};
   state.pareceres.filter(p=>p.dataConclusao).forEach(p=>{
     const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
-    const l = (parecerista && parecerista.departamento) || 'Não informado';
+    const l = canonizar(parecerista && parecerista.departamento);
     porDeptoEmitido[l] = (porDeptoEmitido[l]||0)+1;
   });
 
-  const todosDeptos = Array.from(new Set([...departamentosConhecidos(), ...Object.keys(porDepto), ...Object.keys(porDeptoEmitido)]))
+  const todosDeptos = Array.from(mapaCanonico.values())
     .sort((a,b)=> a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
 
   return { todosDeptos, porDepto, porDeptoEmitido };
