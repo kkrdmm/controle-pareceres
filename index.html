@@ -573,14 +573,18 @@ function parceristaAtualId(parecer){
   return at && at.length ? at[at.length-1].parceristaId : null;
 }
 
-function parceristaDoInicialDoProcesso(ano, codigo, categoria){
-  if(!ano || !codigo || !categoria) return null;
-  const anterior = state.pareceres.find(p=>
-    p.processoAno === ano && p.processoCodigo === codigo &&
-    p.categoriaParecer === categoria && p.tipoParecer === 'Inicial'
-  );
-  if(!anterior) return null;
-  const id = parceristaAtualId(anterior);
+function parceristaAnteriorDoProcesso(ano, codigo){
+  if(!ano || !codigo) return null;
+  const candidatos = state.pareceres
+    .filter(p => p.processoAno === ano && p.processoCodigo === codigo && parceristaAtualId(p))
+    .sort((a,b) => {
+      const da = a.dataSolicitacaoAtual || '';
+      const db = b.dataSolicitacaoAtual || '';
+      if(da !== db) return db.localeCompare(da); // mais recente primeiro
+      return b.numero - a.numero;
+    });
+  if(!candidatos.length) return null;
+  const id = parceristaAtualId(candidatos[0]);
   return id ? (state.pareceristas.find(x=>x.id===id) || null) : null;
 }
 
@@ -1311,9 +1315,9 @@ function abrirModalNovo(){
     let ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
     if(contexto.apenasComissao) ativos = ativos.filter(p=>p.comissaoPesquisa);
     let continuidade = null;
-    if(contexto.tipoParecer && contexto.tipoParecer !== 'Inicial' && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
-      const doInicial = parceristaDoInicialDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
-      if(doInicial && ativos.some(p=>p.id===doInicial.id)) continuidade = doInicial;
+    if(!TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
+      const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo);
+      if(anterior && ativos.some(p=>p.id===anterior.id)) continuidade = anterior;
     }
     const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir, contexto.apenasComissao) : null);
     const grupo = departamento ? grupoDoDepartamento(departamento) : null;
@@ -1441,11 +1445,11 @@ function abrirModalNovo(){
     document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP, contexto);
     atualizarCampoUsp();
     const avisoContinuidade = document.getElementById('aviso-continuidade');
-    if(contexto.tipoParecer && contexto.tipoParecer !== 'Inicial' && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
-      const doInicial = parceristaDoInicialDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
-      if(doInicial){
+    if(!TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
+      const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo);
+      if(anterior){
         avisoContinuidade.style.display = 'block';
-        avisoContinuidade.textContent = `Este processo já foi avaliado inicialmente por ${doInicial.nome}${doInicial.ativo ? ' — mantendo o mesmo parecerista para continuidade.' : ' — porém essa pessoa está inativa no momento, então a sugestão segue o rodízio normal.'}`;
+        avisoContinuidade.textContent = `Este processo já foi registrado antes com ${anterior.nome}${anterior.ativo ? ' — mantendo o mesmo parecerista para continuidade.' : ' — porém essa pessoa está inativa no momento, então a sugestão segue o rodízio normal.'}`;
       } else {
         avisoContinuidade.style.display = 'none';
       }
