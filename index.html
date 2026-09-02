@@ -573,10 +573,10 @@ function parceristaAtualId(parecer){
   return at && at.length ? at[at.length-1].parceristaId : null;
 }
 
-function parceristaAnteriorDoProcesso(ano, codigo){
-  if(!ano || !codigo) return null;
+function parceristaAnteriorDoProcesso(ano, codigo, categoria){
+  if(!ano || !codigo || !categoria) return null;
   const candidatos = state.pareceres
-    .filter(p => p.processoAno === ano && p.processoCodigo === codigo && parceristaAtualId(p))
+    .filter(p => p.processoAno === ano && p.processoCodigo === codigo && p.categoriaParecer === categoria && parceristaAtualId(p))
     .sort((a,b) => {
       const da = a.dataSolicitacaoAtual || '';
       const db = b.dataSolicitacaoAtual || '';
@@ -1316,7 +1316,7 @@ function abrirModalNovo(){
     if(contexto.apenasComissao) ativos = ativos.filter(p=>p.comissaoPesquisa);
     let continuidade = null;
     if(!TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
-      const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo);
+      const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
       if(anterior && ativos.some(p=>p.id===anterior.id)) continuidade = anterior;
     }
     const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir, contexto.apenasComissao) : null);
@@ -1446,7 +1446,7 @@ function abrirModalNovo(){
     atualizarCampoUsp();
     const avisoContinuidade = document.getElementById('aviso-continuidade');
     if(!TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
-      const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo);
+      const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
       if(anterior){
         avisoContinuidade.style.display = 'block';
         avisoContinuidade.textContent = `Este processo já foi registrado antes com ${anterior.nome}${anterior.ativo ? ' — mantendo o mesmo parecerista para continuidade.' : ' — porém essa pessoa está inativa no momento, então a sugestão segue o rodízio normal.'}`;
