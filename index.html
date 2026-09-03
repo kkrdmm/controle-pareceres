@@ -1103,6 +1103,7 @@ function render(){
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
+    document.querySelectorAll('[data-editar-depto]').forEach(el=>{ el.onclick = () => abrirModalEditarDepartamento(el.dataset.editarDepto); });
     document.querySelectorAll('[data-marcar-emitido]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.marcarEmitido); });
     document.querySelectorAll('[data-marcar-nao]').forEach(el=>{ el.onclick = () => abrirDecisaoNaoEmitido(el.dataset.marcarNao); });
     document.querySelectorAll('[data-ver-aviso]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.verAviso, 'visualizar'); });
@@ -1235,6 +1236,7 @@ function tabela(lista){
               <button class="icon-btn" data-marcar-nao="${p.id}" title="Ainda não emitido" aria-label="Ainda não emitido">↻</button>
             ` : ''}
             ${(p.ultimoAvisoEmail || p.emailEnviadoFase1) ? `<button class="icon-btn" data-ver-aviso="${p.id}" title="Ver/copiar aviso enviado" aria-label="Ver/copiar aviso enviado">✉</button>` : ''}
+            <button class="icon-btn" data-editar-depto="${p.id}" title="Editar departamento" aria-label="Editar departamento">✎</button>
             <button class="icon-btn danger" data-excluir="${p.id}" title="Excluir" aria-label="Excluir">✕</button>
           </div>
         </td>
@@ -1286,6 +1288,39 @@ function emptyState(){
 function excluirParecer(id){
   state.pareceres = state.pareceres.filter(x=>x.id!==id);
   saveState(); render();
+}
+
+function abrirModalEditarDepartamento(parecerId){
+  const p = state.pareceres.find(x=>x.id===parecerId);
+  if(!p) return;
+  const overlay = criarOverlay();
+  const departamentos = departamentosConhecidos();
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Editar departamento</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">Parecer nº ${pad(p.numero)} — processo ${escapeHtml(numeroProcesso(p))}.</p>
+      <div class="field">
+        <label for="f-editar-depto">Departamento vinculado à atividade</label>
+        <input id="f-editar-depto" type="text" list="lista-departamentos-editar" value="${escapeHtml(p.departamento||'')}" placeholder="Ex: ZEA">
+        <datalist id="lista-departamentos-editar">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+      </div>
+      <div class="field-error" id="err-editar-depto"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelar">Cancelar</button>
+        <button class="btn" id="salvar-depto">Salvar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('cancelar').onclick = fecharOverlay;
+  document.getElementById('salvar-depto').onclick = () => {
+    const valor = document.getElementById('f-editar-depto').value.trim();
+    if(!valor){ document.getElementById('err-editar-depto').textContent = 'Informe um departamento.'; return; }
+    p.departamento = canonicalizarDepartamentoDigitado(valor);
+    saveState();
+    flashMsg = `Departamento do parecer nº ${pad(p.numero)} atualizado para ${escapeHtml(p.departamento)}.`;
+    fecharOverlay();
+    render();
+  };
 }
 
 /* ---------- Dashboard ---------- */
