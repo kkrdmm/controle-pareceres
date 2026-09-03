@@ -822,52 +822,105 @@ function preencherTemplate(template, parecer){
     .replaceAll('{novo_prazo}', fmtDate(novoPrazo));
 }
 
-function abrirModalFase1Nao(parecerId){
+function construirRascunhoAviso(p){
+  const parceristaId = parceristaAtualId(p);
+  const parecerista = state.pareceristas.find(x=>x.id===parceristaId);
+  return {
+    to: parecerista ? parecerista.email : '',
+    subject: `Parecer pendente — processo ${numeroProcesso(p)}`,
+    body: preencherTemplate(state.emailTemplate, p)
+  };
+}
+
+function ligarBotoesCopiar(overlay){
+  overlay.querySelectorAll('[data-copiar]').forEach(el=>{
+    el.onclick = () => {
+      const campo = document.getElementById(el.dataset.copiar);
+      const status = document.getElementById(el.dataset.status);
+      const texto = campo.value;
+      const marcarSelecionado = () => {
+        campo.removeAttribute('readonly');
+        campo.select();
+        if(status){ status.style.color='var(--ink-soft)'; status.textContent='Selecionado — use Ctrl+C (ou Cmd+C) para copiar.'; }
+      };
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(texto)
+          .then(()=>{ if(status){ status.style.color='var(--green)'; status.textContent='Copiado!'; } })
+          .catch(marcarSelecionado);
+      } else {
+        marcarSelecionado();
+      }
+    };
+  });
+}
+
+function abrirModalFase1Nao(parecerId, modo){
+  modo = modo || 'confirmar'; // 'confirmar' prorroga o prazo; 'visualizar' só mostra/copia, sem mexer em nada
   const p = state.pareceres.find(x=>x.id===parecerId);
   if(!p) return;
   const parceristaId = parceristaAtualId(p);
-  const parecerista = state.pareceristas.find(x=>x.id===parceristaId);
-  const corpo = preencherTemplate(state.emailTemplate, p);
+  const rascunho = (modo === 'visualizar' && p.ultimoAvisoEmail) ? p.ultimoAvisoEmail : construirRascunhoAviso(p);
+  const somenteLeitura = modo === 'visualizar';
+
   const overlay = criarOverlay();
   overlay.innerHTML = `
     <div class="modal">
-      <h2>Avisar parecerista</h2>
-      <p class="field-hint" style="margin-bottom:1rem;">O texto abaixo será aberto no seu aplicativo de e-mail. Ao confirmar, o prazo do parecer nº ${pad(p.numero)} passa para 21 dias no total.</p>
+      <h2>${somenteLeitura ? 'Aviso preparado para este parecer' : 'Avisar parecerista'}</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">
+        ${somenteLeitura
+          ? `Copie os campos abaixo para colar no seu aplicativo de e-mail, se precisar reenviar o aviso.`
+          : `Copie os campos abaixo e cole no seu aplicativo de e-mail. Ao confirmar, o prazo do parecer nº ${pad(p.numero)} passa para 21 dias no total.`}
+      </p>
       <div class="field">
         <label>Para</label>
-        <input id="f-email-to" type="text" value="${escapeHtml(parecerista ? parecerista.email : '')}">
+        <div style="display:flex;gap:0.5rem;">
+          <input id="f-email-to" type="text" value="${escapeHtml(rascunho.to)}" style="flex:1;" ${somenteLeitura?'readonly':''}>
+          <button type="button" class="btn-ghost btn-sm" data-copiar="f-email-to" data-status="status-to">Copiar</button>
+        </div>
+        <p class="field-hint" id="status-to"></p>
       </div>
       <div class="field">
         <label>Assunto</label>
-        <input id="f-email-subject" type="text" value="Parecer pendente — processo ${escapeHtml(numeroProcesso(p))}">
+        <div style="display:flex;gap:0.5rem;">
+          <input id="f-email-subject" type="text" value="${escapeHtml(rascunho.subject)}" style="flex:1;" ${somenteLeitura?'readonly':''}>
+          <button type="button" class="btn-ghost btn-sm" data-copiar="f-email-subject" data-status="status-subject">Copiar</button>
+        </div>
+        <p class="field-hint" id="status-subject"></p>
       </div>
       <div class="field">
         <label>Mensagem</label>
-        <textarea id="f-email-body" rows="8">${escapeHtml(corpo)}</textarea>
+        <textarea id="f-email-body" rows="8" ${somenteLeitura?'readonly':''}>${escapeHtml(rascunho.body)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:0.4rem;">
+          <button type="button" class="btn-ghost btn-sm" data-copiar="f-email-body" data-status="status-body">Copiar mensagem</button>
+        </div>
+        <p class="field-hint" id="status-body"></p>
       </div>
       <div class="modal-actions">
-        <button class="btn-ghost" id="cancelar">Cancelar</button>
-        <button class="btn" id="confirmar-envio">Abrir e-mail e prorrogar prazo</button>
+        <button class="btn-ghost" id="cancelar">${somenteLeitura ? 'Fechar' : 'Cancelar'}</button>
+        ${somenteLeitura ? '' : `<button class="btn" id="confirmar-envio">Confirmar e prorrogar prazo</button>`}
       </div>
     </div>
   `;
   document.getElementById('cancelar').onclick = fecharOverlay;
-  document.getElementById('confirmar-envio').onclick = () => {
-    const to = document.getElementById('f-email-to').value.trim();
-    const subject = document.getElementById('f-email-subject').value;
-    const body = document.getElementById('f-email-body').value;
-    const mailto = `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-    window.open(mailto, '_blank');
+  ligarBotoesCopiar(overlay);
+  const btnConfirmar = document.getElementById('confirmar-envio');
+  if(btnConfirmar){
+    btnConfirmar.onclick = () => {
+      const to = document.getElementById('f-email-to').value.trim();
+      const subject = document.getElementById('f-email-subject').value;
+      const body = document.getElementById('f-email-body').value;
 
-    p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', parceristaId });
-    p.faseAtual = 2;
-    p.prazoFase2 = calcularPrazo(p.dataSolicitacaoAtual, 21);
-    p.emailEnviadoFase1 = true;
-    flashMsg = `E-mail preparado para ${escapeHtml(nomeParecerista(parceristaId))}. Novo prazo do parecer nº ${pad(p.numero)}: ${fmtDate(p.prazoFase2)}.`;
-    saveState();
-    fecharOverlay();
-    render();
-  };
+      p.ultimoAvisoEmail = { to, subject, body, data: todayIso() };
+      p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', parceristaId });
+      p.faseAtual = 2;
+      p.prazoFase2 = calcularPrazo(p.dataSolicitacaoAtual, 21);
+      p.emailEnviadoFase1 = true;
+      flashMsg = `Aviso preparado para ${escapeHtml(nomeParecerista(parceristaId))}. Novo prazo do parecer nº ${pad(p.numero)}: ${fmtDate(p.prazoFase2)}.`;
+      saveState();
+      fecharOverlay();
+      render();
+    };
+  }
 }
 
 /* ---------- Render principal ---------- */
@@ -976,6 +1029,7 @@ function render(){
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
     document.querySelectorAll('[data-marcar-emitido]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.marcarEmitido); });
     document.querySelectorAll('[data-marcar-nao]').forEach(el=>{ el.onclick = () => abrirDecisaoNaoEmitido(el.dataset.marcarNao); });
+    document.querySelectorAll('[data-ver-aviso]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.verAviso, 'visualizar'); });
     const buscaEl = document.getElementById('f-busca');
     if(buscaEl){
       buscaEl.oninput = (e) => {
@@ -1103,6 +1157,7 @@ function tabela(lista){
               <button class="icon-btn" data-marcar-emitido="${p.id}" title="Marcar como emitido" aria-label="Marcar como emitido">✓</button>
               <button class="icon-btn" data-marcar-nao="${p.id}" title="Ainda não emitido" aria-label="Ainda não emitido">↻</button>
             ` : ''}
+            ${p.ultimoAvisoEmail ? `<button class="icon-btn" data-ver-aviso="${p.id}" title="Ver/copiar aviso enviado" aria-label="Ver/copiar aviso enviado">✉</button>` : ''}
             <button class="icon-btn danger" data-excluir="${p.id}" title="Excluir" aria-label="Excluir">✕</button>
           </div>
         </td>
