@@ -34,7 +34,7 @@
     min-height:100vh;
     overflow-x:hidden;
   }
-  .wrap{max-width:1040px;margin:0 auto;min-width:0;}
+  .wrap{max-width:1360px;margin:0 auto;min-width:0;}
 
   .header{
     display:flex;
@@ -188,7 +188,7 @@
   .metric-card .lbl{font-size:0.78rem;color:var(--ink-soft);margin-top:0.2rem;}
   .metric-card.red .num{color:var(--red);}
   .metric-card.green .num{color:var(--green);}
-  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;min-width:0;}
+  .chart-grid{display:grid;grid-template-columns:repeat(auto-fit, minmax(380px, 1fr));gap:1rem;margin-bottom:1.5rem;min-width:0;}
   .chart-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.2rem;min-width:0;max-width:100%;overflow:hidden;}
   .chart-card h3{font-family:'Fraunces', serif;font-size:1rem;font-weight:600;margin:0 0 0.8rem;}
   .chart-card canvas{max-height:220px;}
