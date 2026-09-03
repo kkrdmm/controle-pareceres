@@ -1274,9 +1274,14 @@ function paginaDashboard(){
   const naoEmitidos = {};
   state.pareceres.forEach(p=> p.historicoDecisoes.forEach(h=>{
     if(h.resultado==='nao_emitido'){
-      naoEmitidos[h.parceristaId] = naoEmitidos[h.parceristaId] || { prazoPerdido:0, declinado:0 };
-      if(h.motivo==='declinado_justificado') naoEmitidos[h.parceristaId].declinado++;
-      else naoEmitidos[h.parceristaId].prazoPerdido++;
+      const ehDeclinio = h.motivo==='declinado_justificado';
+      // "perdeu o prazo" só conta quando os 21 dias completos (2ª fase) já passaram sem entrega;
+      // perder só o 1º prazo de 14 dias apenas prorroga, não é uma falha definitiva ainda.
+      if(ehDeclinio || h.fase === 2){
+        naoEmitidos[h.parceristaId] = naoEmitidos[h.parceristaId] || { prazoPerdido:0, declinado:0 };
+        if(ehDeclinio) naoEmitidos[h.parceristaId].declinado++;
+        else naoEmitidos[h.parceristaId].prazoPerdido++;
+      }
     }
   }));
   const ranking = Object.keys(naoEmitidos).map(id=>({
