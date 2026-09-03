@@ -32,8 +32,9 @@
     font-family:'Public Sans', -apple-system, sans-serif;
     padding:2.5rem 1.5rem 4rem;
     min-height:100vh;
+    overflow-x:hidden;
   }
-  .wrap{max-width:1040px;margin:0 auto;}
+  .wrap{max-width:1040px;margin:0 auto;min-width:0;}
 
   .header{
     display:flex;
@@ -181,18 +182,19 @@
   .import-preview{border:1px solid var(--line);border-radius:8px;padding:0.7rem 0.9rem;margin:0.8rem 0;font-size:0.82rem;background:var(--paper);max-height:180px;overflow-y:auto;}
   .import-preview div{padding:0.2rem 0;}
 
-  .dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;}
+  .dash-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;min-width:0;}
   .metric-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;}
   .metric-card .num{font-family:'Fraunces', serif;font-size:1.7rem;font-weight:600;}
   .metric-card .lbl{font-size:0.78rem;color:var(--ink-soft);margin-top:0.2rem;}
   .metric-card.red .num{color:var(--red);}
   .metric-card.green .num{color:var(--green);}
-  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;}
-  .chart-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.2rem;}
+  .chart-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:1.5rem;min-width:0;}
+  .chart-card{background:var(--paper-raised);border:1px solid var(--line);border-radius:10px;padding:1.1rem 1.2rem;min-width:0;max-width:100%;overflow:hidden;}
   .chart-card h3{font-family:'Fraunces', serif;font-size:1rem;font-weight:600;margin:0 0 0.8rem;}
   .chart-card canvas{max-height:220px;}
+  .rank-table-wrap{overflow-x:auto;max-width:100%;}
   .rank-table{width:100%;border-collapse:collapse;font-size:0.83rem;}
-  .rank-table th{text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);padding:0.5rem 0.4rem;border-bottom:1px solid var(--line);}
+  .rank-table th{text-align:left;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--ink-soft);padding:0.5rem 0.4rem;border-bottom:1px solid var(--line);white-space:nowrap;}
   .rank-table td{padding:0.55rem 0.4rem;border-bottom:1px solid var(--line);}
   .rank-table tr:last-child td{border-bottom:none;}
 
@@ -1308,10 +1310,12 @@ function paginaDashboard(){
       <div class="chart-card">
         <h3>Pareceristas que não emitiram</h3>
         ${ranking.length ? `
+          <div class="rank-table-wrap">
           <table class="rank-table">
             <thead><tr><th>Parecerista</th><th>Depto.</th><th>Perdeu o prazo</th><th>Declinou (justificado)</th></tr></thead>
             <tbody>${ranking.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.prazoPerdido}</td><td>${r.declinado}</td></tr>`).join('')}</tbody>
           </table>
+          </div>
         ` : `<p class="field-hint">Nenhuma pendência registrada até o momento.</p>`}
       </div>
       <div class="chart-card">
@@ -1319,12 +1323,14 @@ function paginaDashboard(){
         <p class="field-hint" style="margin-top:-0.4rem;">Quantas vezes cada um avaliou (deu) versus foi avaliado (recebeu), pelo nº USP do autor. Saldo negativo indica quem está "devendo" um parecer.</p>
         <input id="f-busca-reciprocidade" type="text" placeholder="Buscar por nome ou departamento..." value="${escapeHtml(filtroTextoReciprocidade)}" style="width:100%;padding:0.45rem 0.7rem;border:1px solid var(--line);border-radius:20px;background:var(--paper);font-size:0.82rem;margin-bottom:0.7rem;">
         ${reciprocidade.length ? `
+          <div class="rank-table-wrap">
           <table class="rank-table">
             <thead><tr>
               ${thOrdenavelReciprocidade('Parecerista','nome')}${thOrdenavelReciprocidade('Depto.','departamento')}${thOrdenavelReciprocidade('Avaliou','deu')}${thOrdenavelReciprocidade('Foi avaliado','recebeu')}${thOrdenavelReciprocidade('Saldo','saldo')}
             </tr></thead>
             <tbody>${reciprocidade.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.deu}</td><td>${r.recebeu}</td><td style="color:${r.saldo<0?'var(--red)':(r.saldo>0?'var(--green)':'var(--ink-soft)')}">${r.saldo>0?'+':''}${r.saldo}</td></tr>`).join('')}</tbody>
           </table>
+          </div>
         ` : `<p class="field-hint">${filtroTextoReciprocidade.trim() ? `Nenhum resultado para "${escapeHtml(filtroTextoReciprocidade)}".` : 'Sem dados suficientes ainda — o nº USP do autor avaliado precisa ser preenchido nos pareceres para calcular o saldo.'}</p>`}
       </div>
     </div>
