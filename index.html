@@ -1040,6 +1040,7 @@ function render(){
     document.getElementById('btn-grupos').onclick = abrirModalGrupos;
     document.getElementById('btn-conflitos').onclick = abrirModalConflitos;
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
+    document.getElementById('btn-declaracao').onclick = abrirModalDeclaracao;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
@@ -1135,6 +1136,7 @@ function paginaPareceres(lista){
       <button class="btn-ghost" id="btn-grupos">Grupos de departamentos</button>
       <button class="btn-ghost" id="btn-conflitos">Conflitos de interesse</button>
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
+      <button class="btn-ghost" id="btn-declaracao">Declarações</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
     <div class="filters" style="align-items:center;">
@@ -2304,6 +2306,98 @@ function abrirModalConflitos(){
   desenhar();
 }
 
+
+/* ---------- Modal: declaração de pareceres emitidos ---------- */
+
+function abrirModalDeclaracao(){
+  const overlay = criarOverlay();
+  const desenhar = () => {
+    const pareceristasOrdenados = state.pareceristas.slice().sort((a,b)=>a.nome.localeCompare(b.nome,'pt-BR',{sensitivity:'base'}));
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>Gerar declaração</h2>
+        <p class="field-hint" style="margin-bottom:1rem;">
+          Monta um texto de declaração com a quantidade de pareceres emitidos por um parecerista num período, agrupados por categoria e tipo de parecer — sem citar números de processo.
+        </p>
+        <div class="field">
+          <label for="f-decl-parecerista">Parecerista</label>
+          <select id="f-decl-parecerista">
+            <option value="">Selecione...</option>
+            ${pareceristasOrdenados.map(p=>`<option value="${p.id}">${escapeHtml(p.nome)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field-row">
+          <div class="field"><label for="f-decl-inicio">Período — de</label><input id="f-decl-inicio" type="date"></div>
+          <div class="field"><label for="f-decl-fim">até</label><input id="f-decl-fim" type="date"></div>
+        </div>
+        <p class="field-hint">O período considera a data em que o parecer foi solicitado a essa pessoa (não a data de conclusão), e só entram pareceres já concluídos.</p>
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn-ghost btn-sm" id="gerar-declaracao">Gerar declaração</button>
+        </div>
+        <div id="resultado-declaracao"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-declaracao">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('fechar-declaracao').onclick = () => { fecharOverlay(); render(); };
+    document.getElementById('gerar-declaracao').onclick = () => {
+      const parceristaId = document.getElementById('f-decl-parecerista').value;
+      const inicio = document.getElementById('f-decl-inicio').value;
+      const fim = document.getElementById('f-decl-fim').value;
+      const resultadoEl = document.getElementById('resultado-declaracao');
+
+      if(!parceristaId){ resultadoEl.innerHTML = `<p class="field-error">Selecione um parecerista.</p>`; return; }
+      if(!inicio || !fim){ resultadoEl.innerHTML = `<p class="field-error">Informe o período (data inicial e final).</p>`; return; }
+      if(inicio > fim){ resultadoEl.innerHTML = `<p class="field-error">A data inicial não pode ser depois da data final.</p>`; return; }
+
+      const parecerista = state.pareceristas.find(x=>x.id===parceristaId);
+      const pareceresDoPeriodo = state.pareceres.filter(p=>
+        p.dataConclusao &&
+        parceristaAtualId(p) === parceristaId &&
+        p.dataSolicitacaoAtual >= inicio && p.dataSolicitacaoAtual <= fim
+      );
+
+      if(pareceresDoPeriodo.length === 0){
+        resultadoEl.innerHTML = `<p class="field-hint">Nenhum parecer emitido por ${escapeHtml(parecerista.nome)} nesse período (considerando a data de solicitação).</p>`;
+        return;
+      }
+
+      const grupos = {};
+      pareceresDoPeriodo.forEach(p=>{
+        const chave = labelCategoria(p) + (p.tipoParecer ? ' — ' + p.tipoParecer : '');
+        grupos[chave] = (grupos[chave]||0) + 1;
+      });
+      const linhasGrupos = Object.keys(grupos).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(k=>`- ${k}: ${grupos[k]}`).join('\n');
+
+      const texto =
+`DECLARAÇÃO
+
+Declaramos, para os devidos fins, que ${parecerista.nome}, nº USP ${parecerista.id}, emitiu, no período de ${fmtDate(inicio)} a ${fmtDate(fim)}, um total de ${pareceresDoPeriodo.length} parecer(es) no âmbito da Comissão de Pesquisa e Inovação da Faculdade de Zootecnia e Engenharia de Alimentos (FZEA/USP), assim discriminados:
+
+${linhasGrupos}
+
+Pirassununga, ${fmtDate(todayIso())}.
+
+
+Comissão de Pesquisa e Inovação
+FZEA/USP`;
+
+      resultadoEl.innerHTML = `
+        <div class="field">
+          <label>Texto da declaração</label>
+          <textarea id="f-texto-declaracao" rows="16">${escapeHtml(texto)}</textarea>
+          <div style="display:flex;justify-content:flex-end;margin-top:0.4rem;">
+            <button type="button" class="btn-ghost btn-sm" data-copiar="f-texto-declaracao" data-status="status-declaracao">Copiar declaração</button>
+          </div>
+          <p class="field-hint" id="status-declaracao"></p>
+        </div>
+      `;
+      ligarBotoesCopiar(overlay);
+    };
+  };
+  desenhar();
+}
 
 function abrirModalTemplate(){
   const overlay = criarOverlay();
