@@ -2334,8 +2334,8 @@ function abrirModalDeclaracao(){
           </select>
         </div>
         <div class="field-row">
-          <div class="field"><label for="f-decl-inicio">Período — de</label><input id="f-decl-inicio" type="date"></div>
-          <div class="field"><label for="f-decl-fim">até</label><input id="f-decl-fim" type="date"></div>
+          <div class="field"><label for="f-decl-inicio">Período — de</label><input id="f-decl-inicio" type="date" max="${todayIso()}"></div>
+          <div class="field"><label for="f-decl-fim">até</label><input id="f-decl-fim" type="date" max="${todayIso()}"></div>
         </div>
         <p class="field-hint">O período considera a data em que o parecer foi solicitado a essa pessoa (não a data de conclusão), e só entram pareceres já concluídos.</p>
         <div class="modal-actions" style="justify-content:flex-start;">
@@ -2357,6 +2357,7 @@ function abrirModalDeclaracao(){
       if(!parceristaId){ resultadoEl.innerHTML = `<p class="field-error">Selecione um parecerista.</p>`; return; }
       if(!inicio || !fim){ resultadoEl.innerHTML = `<p class="field-error">Informe o período (data inicial e final).</p>`; return; }
       if(inicio > fim){ resultadoEl.innerHTML = `<p class="field-error">A data inicial não pode ser depois da data final.</p>`; return; }
+      if(fim > todayIso()){ resultadoEl.innerHTML = `<p class="field-error">A data final não pode ser depois de hoje (${fmtDate(todayIso())}).</p>`; return; }
 
       const parecerista = state.pareceristas.find(x=>x.id===parceristaId);
       const pareceresDoPeriodo = state.pareceres.filter(p=>
