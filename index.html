@@ -748,8 +748,30 @@ function marcarEmitido(parecerId){
 function abrirDecisaoNaoEmitido(parecerId){
   const p = state.pareceres.find(x=>x.id===parecerId);
   if(!p) return;
-  if(p.faseAtual === 1) abrirModalFase1Nao(parecerId);
-  else abrirModalFase2Nao(parecerId);
+  const overlay = criarOverlay();
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Por que o parecer não foi emitido?</h2>
+      <p class="field-hint" style="margin-bottom:1.2rem;">Isso ajuda a diferenciar, no dashboard, quem perdeu o prazo sem retorno de quem declinou justificadamente. Não é preciso registrar o texto da justificativa aqui.</p>
+      <div class="modal-actions" style="justify-content:flex-start;flex-wrap:wrap;gap:0.6rem;">
+        <button class="btn-ghost" id="motivo-prazo">Perdeu o prazo (sem retorno)</button>
+        <button class="btn-ghost" id="motivo-declinou">Declinou com justificativa</button>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelar-motivo">Cancelar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('cancelar-motivo').onclick = fecharOverlay;
+  document.getElementById('motivo-prazo').onclick = () => {
+    fecharOverlay();
+    if(p.faseAtual === 1) abrirModalFase1Nao(parecerId);
+    else abrirModalFase2Nao(parecerId, 'prazo_perdido');
+  };
+  document.getElementById('motivo-declinou').onclick = () => {
+    fecharOverlay();
+    abrirModalFase2Nao(parecerId, 'declinado_justificado');
+  };
 }
 
 function efetuarReatribuicao(parecerId, novoParceristaId){
@@ -766,7 +788,8 @@ function efetuarReatribuicao(parecerId, novoParceristaId){
   saveState(); render();
 }
 
-function abrirModalFase2Nao(parecerId){
+function abrirModalFase2Nao(parecerId, motivo){
+  motivo = motivo || 'prazo_perdido';
   const p = state.pareceres.find(x=>x.id===parecerId);
   if(!p) return;
   const parceristaAnteriorId = parceristaAtualId(p);
@@ -795,11 +818,15 @@ function abrirModalFase2Nao(parecerId){
   };
   const listaOpcoes = opcoes();
 
+  const textoMotivo = motivo === 'declinado_justificado'
+    ? `O parecer nº ${pad(p.numero)} (processo ${escapeHtml(numeroProcesso(p))}) foi declinado por ${escapeHtml(nomeParecerista(parceristaAnteriorId))}, com justificativa.`
+    : `O parecer nº ${pad(p.numero)} (processo ${escapeHtml(numeroProcesso(p))}) não foi emitido por ${escapeHtml(nomeParecerista(parceristaAnteriorId))} dentro do prazo final.`;
+
   overlay.innerHTML = `
     <div class="modal">
       <h2>Trocar parecerista</h2>
       <p class="field-hint" style="margin-bottom:1rem;">
-        O parecer nº ${pad(p.numero)} (processo ${escapeHtml(numeroProcesso(p))}) não foi emitido por ${escapeHtml(nomeParecerista(parceristaAnteriorId))} dentro do prazo final.
+        ${textoMotivo}
         ${sugestao ? `Sugestão automática: <strong>${escapeHtml(sugestao.nome)}</strong> — mas você pode escolher outro nome abaixo.` : 'Não há sugestão automática disponível; escolha manualmente.'}
       </p>
       ${exigeComissao ? `<p class="field-hint" style="color:var(--brass-dark);margin-bottom:1rem;">Este processo já passou por 2 pareceristas sem retorno. A partir de agora, só membros da <strong>comissão de pesquisa</strong> podem ser indicados.</p>` : ''}
@@ -825,7 +852,7 @@ function abrirModalFase2Nao(parecerId){
     btnConfirmar.onclick = () => {
       const novoId = document.getElementById('f-novo-parecerista-fase2').value;
       if(!novoId){ document.getElementById('err-troca-parecerista').textContent = 'Selecione um parecerista.'; return; }
-      p.historicoDecisoes.push({ data: todayIso(), fase:2, resultado:'nao_emitido', parceristaId: parceristaAnteriorId });
+      p.historicoDecisoes.push({ data: todayIso(), fase: p.faseAtual, resultado:'nao_emitido', motivo, parceristaId: parceristaAnteriorId });
       efetuarReatribuicao(parecerId, novoId);
       fecharOverlay();
     };
@@ -934,7 +961,7 @@ function abrirModalFase1Nao(parecerId, modo){
       const body = document.getElementById('f-email-body').value;
 
       p.ultimoAvisoEmail = { to, subject, body, data: todayIso() };
-      p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', parceristaId });
+      p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', motivo:'prazo_perdido', parceristaId });
       p.faseAtual = 2;
       p.prazoFase2 = calcularPrazo(p.dataSolicitacaoAtual, 21);
       p.emailEnviadoFase1 = true;
@@ -1245,15 +1272,15 @@ function paginaDashboard(){
   const naoEmitidos = {};
   state.pareceres.forEach(p=> p.historicoDecisoes.forEach(h=>{
     if(h.resultado==='nao_emitido'){
-      naoEmitidos[h.parceristaId] = naoEmitidos[h.parceristaId] || { fase1:0, fase2:0 };
-      if(h.fase===1) naoEmitidos[h.parceristaId].fase1++;
-      else naoEmitidos[h.parceristaId].fase2++;
+      naoEmitidos[h.parceristaId] = naoEmitidos[h.parceristaId] || { prazoPerdido:0, declinado:0 };
+      if(h.motivo==='declinado_justificado') naoEmitidos[h.parceristaId].declinado++;
+      else naoEmitidos[h.parceristaId].prazoPerdido++;
     }
   }));
   const ranking = Object.keys(naoEmitidos).map(id=>({
     id, nome: nomeParecerista(id), departamento: (state.pareceristas.find(p=>p.id===id)||{}).departamento || '—',
     ...naoEmitidos[id]
-  })).sort((a,b)=> (b.fase1+b.fase2) - (a.fase1+a.fase2));
+  })).sort((a,b)=> (b.prazoPerdido+b.declinado) - (a.prazoPerdido+a.declinado));
 
   let reciprocidade = state.pareceristas
     .map(p=>({ id:p.id, nome:p.nome, departamento:p.departamento||'—', deu: contarAtribuicoes(p.id), recebeu: contarAvaliacoesRecebidas(p.id), saldo: saldoReciprocidade(p.id) }))
@@ -1279,11 +1306,11 @@ function paginaDashboard(){
       <div class="chart-card"><h3>Pareceres solicitados por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card"><h3>Pareceres emitidos por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento-emitidos"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
-        <h3>Pareceristas que não emitiram no prazo</h3>
+        <h3>Pareceristas que não emitiram</h3>
         ${ranking.length ? `
           <table class="rank-table">
-            <thead><tr><th>Parecerista</th><th>Depto.</th><th>1º prazo perdido</th><th>Trocado no prazo final</th></tr></thead>
-            <tbody>${ranking.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.fase1}</td><td>${r.fase2}</td></tr>`).join('')}</tbody>
+            <thead><tr><th>Parecerista</th><th>Depto.</th><th>Perdeu o prazo</th><th>Declinou (justificado)</th></tr></thead>
+            <tbody>${ranking.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.prazoPerdido}</td><td>${r.declinado}</td></tr>`).join('')}</tbody>
           </table>
         ` : `<p class="field-hint">Nenhuma pendência registrada até o momento.</p>`}
       </div>
