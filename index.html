@@ -248,7 +248,7 @@ const TIPOS_SEM_PARECERISTA = ['Anuência do departamento - inicial', 'Anuência
 
 const PARECERISTA_CATEGORIAS = ['Docente','Pós-doutorando','Pesquisador colaborador','Externo'];
 
-const TEMPLATE_EMAIL_PADRAO =
+const TEMPLATE_EMAIL_PADRAO_ANTIGO =
 `Prezado(a) {parecerista},
 
 O prazo de 14 dias para emissão do parecer referente ao processo {processo} (categoria: {categoria}) foi encerrado sem manifestação registrada.
@@ -256,6 +256,17 @@ O prazo de 14 dias para emissão do parecer referente ao processo {processo} (ca
 Solicito a emissão do parecer no prazo adicional de mais 7 dias (novo prazo final: {novo_prazo}).
 
 Atenciosamente,`;
+
+const TEMPLATE_EMAIL_PADRAO =
+`Prezado(a) parecerista: {parecerista},
+
+O prazo de 14 dias para emissão do parecer referente ao processo {processo} (categoria: {categoria} - tipo de parecer {tipo}) foi encerrado sem manifestação registrada.
+
+Solicitamos a emissão do parecer no prazo adicional de mais 7 dias (novo prazo final: {novo_prazo}).
+
+Atenciosamente,
+Comissão de Pesquisa e Inovação
+FZEA/USP`;
 
 let state = null;
 let filtro = 'todos';
@@ -304,6 +315,7 @@ async function loadState(){
     const res = await storageGetCompat(STORAGE_KEY);
     state = res ? JSON.parse(res.value) : defaultState();
     if(!state.emailTemplate) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
+    if(state.emailTemplate === TEMPLATE_EMAIL_PADRAO_ANTIGO) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
     if(!state.gruposDepartamentos) state.gruposDepartamentos = [];
     if(!state.gruposConflito) state.gruposConflito = [];
     if(!state.departamentosExtras) state.departamentosExtras = [];
@@ -804,6 +816,7 @@ function preencherTemplate(template, parecer){
     .replaceAll('{parecerista}', saudacao)
     .replaceAll('{processo}', numeroProcesso(parecer))
     .replaceAll('{categoria}', labelCategoria(parecer))
+    .replaceAll('{tipo}', parecer.tipoParecer || '—')
     .replaceAll('{departamento}', parecer.departamento || '—')
     .replaceAll('{numero_parecer}', pad(parecer.numero))
     .replaceAll('{novo_prazo}', fmtDate(novoPrazo));
@@ -2226,7 +2239,7 @@ function abrirModalTemplate(){
   overlay.innerHTML = `
     <div class="modal">
       <h2>Modelo de e-mail</h2>
-      <p class="field-hint" style="margin-bottom:0.8rem;">Use os campos entre chaves: {parecerista}, {processo}, {categoria}, {departamento}, {numero_parecer}, {novo_prazo}.</p>
+      <p class="field-hint" style="margin-bottom:0.8rem;">Use os campos entre chaves: {parecerista}, {processo}, {categoria}, {tipo}, {departamento}, {numero_parecer}, {novo_prazo}.</p>
       <div class="field"><textarea id="f-template" rows="10">${escapeHtml(state.emailTemplate)}</textarea></div>
       <div class="modal-actions">
         <button class="btn-ghost" id="cancelar">Cancelar</button>
