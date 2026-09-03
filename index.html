@@ -257,12 +257,27 @@ Solicito a emissão do parecer no prazo adicional de mais 7 dias (novo prazo fin
 
 Atenciosamente,`;
 
-const TEMPLATE_EMAIL_PADRAO =
+const TEMPLATE_EMAIL_PADRAO_V2 =
 `Prezado(a) parecerista: {parecerista},
 
 O prazo de 14 dias para emissão do parecer referente ao processo {processo} (categoria: {categoria} - tipo de parecer {tipo}) foi encerrado sem manifestação registrada.
 
 Solicitamos a emissão do parecer no prazo adicional de mais 7 dias (novo prazo final: {novo_prazo}).
+
+Atenciosamente,
+Comissão de Pesquisa e Inovação
+FZEA/USP`;
+
+const TEMPLATE_EMAIL_PADRAO =
+`Prezado(a) parecerista: {parecerista},
+
+O prazo de 14 dias para emissão do parecer referente ao processo {processo} (categoria: {categoria} - tipo de parecer {tipo}) foi encerrado sem manifestação registrada.
+
+As orientações para emissão do parecer foram enviadas no email original do pedido.
+
+Solicitamos a emissão do parecer no prazo adicional de mais 7 dias (novo prazo final: {novo_prazo}).
+
+Na impossibilidade de atender à demanda, solicitamos que envie sua justificativa para cpqfzea@usp.br.
 
 Atenciosamente,
 Comissão de Pesquisa e Inovação
@@ -316,6 +331,7 @@ async function loadState(){
     state = res ? JSON.parse(res.value) : defaultState();
     if(!state.emailTemplate) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
     if(state.emailTemplate === TEMPLATE_EMAIL_PADRAO_ANTIGO) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
+    if(state.emailTemplate === TEMPLATE_EMAIL_PADRAO_V2) state.emailTemplate = TEMPLATE_EMAIL_PADRAO;
     if(!state.gruposDepartamentos) state.gruposDepartamentos = [];
     if(!state.gruposConflito) state.gruposConflito = [];
     if(!state.departamentosExtras) state.departamentosExtras = [];
