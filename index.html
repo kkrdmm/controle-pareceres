@@ -1157,7 +1157,7 @@ function tabela(lista){
               <button class="icon-btn" data-marcar-emitido="${p.id}" title="Marcar como emitido" aria-label="Marcar como emitido">✓</button>
               <button class="icon-btn" data-marcar-nao="${p.id}" title="Ainda não emitido" aria-label="Ainda não emitido">↻</button>
             ` : ''}
-            ${p.ultimoAvisoEmail ? `<button class="icon-btn" data-ver-aviso="${p.id}" title="Ver/copiar aviso enviado" aria-label="Ver/copiar aviso enviado">✉</button>` : ''}
+            ${(p.ultimoAvisoEmail || p.emailEnviadoFase1) ? `<button class="icon-btn" data-ver-aviso="${p.id}" title="Ver/copiar aviso enviado" aria-label="Ver/copiar aviso enviado">✉</button>` : ''}
             <button class="icon-btn danger" data-excluir="${p.id}" title="Excluir" aria-label="Excluir">✕</button>
           </div>
         </td>
