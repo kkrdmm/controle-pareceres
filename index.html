@@ -339,6 +339,7 @@ async function loadState(){
     if(!state.departamentosExtras) state.departamentosExtras = [];
     if(!state.feriadosExtras) state.feriadosExtras = [];
     if(!state.departamentosExtras.some(d => normaliza(d)==='adm')) state.departamentosExtras.push('ADM');
+    padronizarGrafiaDepartamentosExistentes();
     ordenarPareceristasAlfabeticamente();
   }catch(e){
     state = defaultState();
@@ -715,6 +716,28 @@ function departamentosConhecidos(){
   state.pareceristas.forEach(p=>considerar(p.departamento));
   (state.departamentosExtras||[]).forEach(considerar);
   return Array.from(mapa.values()).sort((a,b)=>a.localeCompare(b,'pt-BR',{sensitivity:'base'}));
+}
+
+// Se o texto digitado bater (ignorando maiúsculas/minúsculas) com um departamento já conhecido,
+// usa a grafia oficial já cadastrada, em vez do que foi digitado agora.
+function canonicalizarDepartamentoDigitado(valor){
+  if(!valor) return valor;
+  const conhecidos = departamentosConhecidos();
+  const match = conhecidos.find(d => normaliza(d) === normaliza(valor));
+  return match || valor.trim();
+}
+
+function padronizarGrafiaDepartamentosExistentes(){
+  const conhecidos = departamentosConhecidos();
+  const mapa = new Map();
+  conhecidos.forEach(d => mapa.set(normaliza(d), d));
+  let alterados = 0;
+  state.pareceres.forEach(p=>{
+    if(!p.departamento) return;
+    const canonico = mapa.get(normaliza(p.departamento));
+    if(canonico && canonico !== p.departamento){ p.departamento = canonico; alterados++; }
+  });
+  return alterados;
 }
 
 function statusParecer(p){
@@ -1634,7 +1657,7 @@ function abrirModalNovo(){
     const categoriaOutros = document.getElementById('f-categoria-outros').value.trim();
     const avaliadoPelaComissao = categoria==='outros' && document.getElementById('f-comissao-outros').classList.contains('on');
     const tipoParecer = document.getElementById('f-tipo').value.trim();
-    const departamento = document.getElementById('f-departamento').value.trim();
+    const departamento = canonicalizarDepartamentoDigitado(document.getElementById('f-departamento').value.trim());
     const semParecerista = TIPOS_SEM_PARECERISTA.includes(tipoParecer);
     const parceristaId = semParecerista ? '' : document.getElementById('f-parecerista').value;
 
@@ -1823,7 +1846,7 @@ function abrirModalPareceristas(aviso){
           if(!nome) return;
           p.nome = nome;
           p.email = linha.querySelector('.pe-email').value.trim();
-          p.departamento = linha.querySelector('.pe-depto').value.trim();
+          p.departamento = canonicalizarDepartamentoDigitado(linha.querySelector('.pe-depto').value.trim());
           p.categoria = linha.querySelector('.pe-cat').value;
           p.comissaoPesquisa = linha.querySelector('.pe-comissao').checked;
           p.staff = linha.querySelector('.pe-staff').checked;
@@ -1837,7 +1860,7 @@ function abrirModalPareceristas(aviso){
         const nome = document.getElementById('f-novo-nome').value.trim();
         const nusp = document.getElementById('f-novo-nusp').value.trim();
         const email = document.getElementById('f-novo-email').value.trim();
-        const departamento = document.getElementById('f-novo-depto').value.trim();
+        const departamento = canonicalizarDepartamentoDigitado(document.getElementById('f-novo-depto').value.trim());
         const categoria = document.getElementById('f-novo-cat').value;
         const comissaoPesquisa = document.getElementById('f-novo-comissao').classList.contains('on');
         const staff = document.getElementById('f-novo-staff').classList.contains('on');
@@ -1944,7 +1967,7 @@ function parseLinhaParecerista(row){
   const nUSP = acha(['nusp','n usp','usp','matricula','id']);
   const nome = acha(['nome']);
   const email = acha(['mail']);
-  const departamento = acha(['depart']);
+  const departamento = canonicalizarDepartamentoDigitado(acha(['depart']));
   const categoria = normalizarCategoriaParecerista(acha(['categ','funcao','vinculo','cargo']));
   const comissaoTexto = normaliza(acha(['comissao']));
   const comissaoPesquisa = ['sim','x','s','yes','true','1'].includes(comissaoTexto);
@@ -2126,12 +2149,22 @@ function abrirModalDepartamentos(){
           <button class="btn btn-sm" id="add-depto">Adicionar</button>
         </div>
         <div class="field-error" id="err-depto"></div>
+        <div class="modal-actions" style="justify-content:flex-start;">
+          <button class="btn-ghost btn-sm" id="padronizar-deptos">Padronizar grafia nos pareceres já cadastrados</button>
+        </div>
         <div class="modal-actions">
           <button class="btn-ghost" id="fechar-deptos">Fechar</button>
         </div>
       </div>
     `;
     document.getElementById('fechar-deptos').onclick = () => { fecharOverlay(); render(); };
+    document.getElementById('padronizar-deptos').onclick = () => {
+      const alterados = padronizarGrafiaDepartamentosExistentes();
+      saveState();
+      const erro = document.getElementById('err-depto');
+      erro.style.color = 'var(--green)';
+      erro.textContent = alterados > 0 ? `${alterados} parecer(es) tiveram o departamento padronizado.` : 'Nenhum parecer precisava de ajuste.';
+    };
     document.querySelectorAll('[data-del-depto]').forEach(el=>{
       el.onclick = () => {
         const d = el.dataset.delDepto;
