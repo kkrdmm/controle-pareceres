@@ -1426,7 +1426,9 @@ function calcularDadosDepartamento(){
   const porDeptoEmitido = {};
   state.pareceres.filter(p=>p.dataConclusao).forEach(p=>{
     const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
-    const l = canonizar(parecerista && parecerista.departamento);
+    // Sem parecerista individual (ex: "anuência do departamento"), atribui ao departamento do próprio processo,
+    // já que quem emitiu, nesse caso, foi o departamento em si.
+    const l = canonizar((parecerista && parecerista.departamento) || p.departamento);
     porDeptoEmitido[l] = (porDeptoEmitido[l]||0)+1;
   });
 
