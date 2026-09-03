@@ -527,6 +527,13 @@ function importarArquivo(file){
 function uid(){ return Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 function pad(n){ return String(n).padStart(3,'0'); }
 function fmtDate(iso){ if(!iso) return '—'; const d = new Date(iso+'T00:00:00'); return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}); }
+
+const MESES_POR_EXTENSO = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+function fmtDataPorExtenso(iso){
+  if(!iso) return '—';
+  const d = new Date(iso+'T00:00:00');
+  return `${d.getDate()} de ${MESES_POR_EXTENSO[d.getMonth()]} de ${d.getFullYear()}`;
+}
 function addDays(iso, days){ const d = new Date(iso+'T00:00:00'); d.setDate(d.getDate()+Number(days)); return d.toISOString().slice(0,10); }
 function todayIso(){ return new Date().toISOString().slice(0,10); }
 function diffDays(iso){ const d = new Date(iso+'T00:00:00'); const t = new Date(todayIso()+'T00:00:00'); return Math.round((d-t)/86400000); }
@@ -2377,7 +2384,7 @@ Declaramos, para os devidos fins, que ${parecerista.nome}, nº USP ${parecerista
 
 ${linhasGrupos}
 
-Pirassununga, ${fmtDate(todayIso())}.
+Pirassununga, ${fmtDataPorExtenso(todayIso())}.
 
 
 Comissão de Pesquisa e Inovação
