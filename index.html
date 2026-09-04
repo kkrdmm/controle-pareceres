@@ -844,14 +844,27 @@ function abrirModalFase2Nao(parecerId, motivo){
   const listaOpcoes = opcoes();
 
   const textoMotivo = motivo === 'declinado_justificado'
-    ? `O parecer nº ${pad(p.numero)} (processo ${escapeHtml(numeroProcesso(p))}) foi declinado por ${escapeHtml(nomeParecerista(parceristaAnteriorId))}, com justificativa.`
+    ? `${escapeHtml(nomeParecerista(parceristaAnteriorId))} comunicou que não poderá emitir este parecer.`
     : `O parecer nº ${pad(p.numero)} (processo ${escapeHtml(numeroProcesso(p))}) não foi emitido por ${escapeHtml(nomeParecerista(parceristaAnteriorId))} dentro do prazo final.`;
+
+  const resumoProcesso = `
+    <div class="field-row" style="margin-bottom:0.6rem;">
+      <div class="field" style="margin-bottom:0;"><label>Processo</label><input type="text" value="${escapeHtml(numeroProcesso(p))}" disabled></div>
+      <div class="field" style="margin-bottom:0;"><label>Departamento</label><input type="text" value="${escapeHtml(p.departamento||'—')}" disabled></div>
+    </div>
+    <div class="field-row" style="margin-bottom:0.6rem;">
+      <div class="field" style="margin-bottom:0;"><label>Categoria</label><input type="text" value="${escapeHtml(labelCategoria(p))}" disabled></div>
+      <div class="field" style="margin-bottom:0;"><label>Tipo de parecer</label><input type="text" value="${escapeHtml(p.tipoParecer||'—')}" disabled></div>
+    </div>
+    ${p.autorNUSP ? `<div class="field" style="margin-bottom:0.6rem;"><label>Nº USP do autor avaliado</label><input type="text" value="${escapeHtml(p.autorNUSP)}" disabled></div>` : ''}
+  `;
 
   overlay.innerHTML = `
     <div class="modal">
-      <h2>Trocar parecerista</h2>
+      <h2>${motivo === 'declinado_justificado' ? 'Parecerista declinou — escolher novo' : 'Trocar parecerista'}</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">${textoMotivo}</p>
+      ${resumoProcesso}
       <p class="field-hint" style="margin-bottom:1rem;">
-        ${textoMotivo}
         ${sugestao ? `Sugestão automática: <strong>${escapeHtml(sugestao.nome)}</strong> — mas você pode escolher outro nome abaixo.` : 'Não há sugestão automática disponível; escolha manualmente.'}
       </p>
       ${exigeComissao ? `<p class="field-hint" style="color:var(--brass-dark);margin-bottom:1rem;">Este processo já passou por 2 pareceristas sem retorno. A partir de agora, só membros da <strong>comissão de pesquisa</strong> podem ser indicados.</p>` : ''}
@@ -863,7 +876,7 @@ function abrirModalFase2Nao(parecerId, motivo){
         <div class="field-error" id="err-troca-parecerista"></div>
         <div class="modal-actions">
           <button class="btn-ghost" id="cancelar">Cancelar</button>
-          <button class="btn" id="confirmar-troca">Confirmar novo parecerista</button>
+          <button class="btn" id="confirmar-troca">Confirmar atribuição</button>
         </div>
       ` : `
         <p class="field-error">${exigeComissao ? 'Não há nenhum membro ativo da comissão de pesquisa disponível para reatribuir este parecer (cadastre ou marque alguém como membro da comissão em "Pareceristas").' : 'Não há nenhum parecerista ativo disponível para reatribuir este parecer (cadastre ou reative alguém em "Pareceristas").'}</p>
@@ -1106,6 +1119,7 @@ function render(){
     document.querySelectorAll('[data-editar-depto]').forEach(el=>{ el.onclick = () => abrirModalEditarDepartamento(el.dataset.editarDepto); });
     document.querySelectorAll('[data-marcar-emitido]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.marcarEmitido); });
     document.querySelectorAll('[data-marcar-nao]').forEach(el=>{ el.onclick = () => abrirDecisaoNaoEmitido(el.dataset.marcarNao); });
+    document.querySelectorAll('[data-declinar]').forEach(el=>{ el.onclick = () => abrirModalFase2Nao(el.dataset.declinar, 'declinado_justificado'); });
     document.querySelectorAll('[data-ver-aviso]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.verAviso, 'visualizar'); });
     const buscaEl = document.getElementById('f-busca');
     if(buscaEl){
@@ -1234,6 +1248,7 @@ function tabela(lista){
             ${!p.dataConclusao ? `
               <button class="icon-btn" data-marcar-emitido="${p.id}" title="Marcar como emitido" aria-label="Marcar como emitido">✓</button>
               <button class="icon-btn" data-marcar-nao="${p.id}" title="Ainda não emitido" aria-label="Ainda não emitido">↻</button>
+              ${parceristaAtualId(p) ? `<button class="icon-btn" data-declinar="${p.id}" title="Parecerista declinou" aria-label="Parecerista declinou">⊘</button>` : ''}
             ` : ''}
             ${(p.ultimoAvisoEmail || p.emailEnviadoFase1) ? `<button class="icon-btn" data-ver-aviso="${p.id}" title="Ver/copiar aviso enviado" aria-label="Ver/copiar aviso enviado">✉</button>` : ''}
             <button class="icon-btn" data-editar-depto="${p.id}" title="Editar departamento" aria-label="Editar departamento">✎</button>
