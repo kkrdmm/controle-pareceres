@@ -1417,7 +1417,7 @@ function paginaBolsas(){
     <div class="chart-grid">
       <div class="chart-card"><h3>Solicitadas x concedidas por modalidade</h3>${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-modalidade"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card"><h3>Evolução de bolsas concedidas por ciclo</h3>${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-evolucao"></canvas></div>` : avisoGraficoIndisponivel()}</div>
-      <div class="chart-card">
+      <div class="chart-card" style="grid-column:1 / -1;">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:0.8rem;">
           <h3 style="margin:0;">Solicitadas x concedidas por ano</h3>
           <select id="f-modalidade-grafico-bolsas" style="width:auto;padding:0.3rem 0.6rem;font-size:0.8rem;">
