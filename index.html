@@ -250,6 +250,8 @@ const TIPOS_SEM_PARECERISTA = ['Anuência do departamento - inicial', 'Anuência
 
 const PARECERISTA_CATEGORIAS = ['Docente','Pós-doutorando','Pesquisador colaborador','Externo'];
 
+const MODALIDADES_BOLSA = ['PIBIC', 'PIBITI', 'PIBIC Cota', 'PIBIC-EM'];
+
 const TEMPLATE_EMAIL_PADRAO_ANTIGO =
 `Prezado(a) {parecerista},
 
@@ -305,6 +307,7 @@ function defaultState(){
     gruposConflito: [],
     departamentosExtras: ['ADM'],
     feriadosExtras: [],
+    bolsas: [],
     atualizadoEm: null
   };
 }
@@ -338,6 +341,7 @@ async function loadState(){
     if(!state.gruposConflito) state.gruposConflito = [];
     if(!state.departamentosExtras) state.departamentosExtras = [];
     if(!state.feriadosExtras) state.feriadosExtras = [];
+    if(!state.bolsas) state.bolsas = [];
     if(!state.departamentosExtras.some(d => normaliza(d)==='adm')) state.departamentosExtras.push('ADM');
     padronizarGrafiaDepartamentosExistentes();
     ordenarPareceristasAlfabeticamente();
@@ -1100,6 +1104,7 @@ function render(){
 
     <div class="tabs">
       <button class="tab ${abaAtual==='pareceres'?'active':''}" data-tab="pareceres">Pareceres</button>
+      <button class="tab ${abaAtual==='bolsas'?'active':''}" data-tab="bolsas">Bolsas</button>
       <button class="tab ${abaAtual==='dashboard'?'active':''}" data-tab="dashboard">Dashboard</button>
     </div>
 
@@ -1117,7 +1122,7 @@ function render(){
 
     ${alertas.map(a => alertaHtml(a)).join('')}
 
-    ${abaAtual === 'pareceres' ? paginaPareceres(pareceresFiltrados) : paginaDashboard()}
+    ${abaAtual === 'pareceres' ? paginaPareceres(pareceresFiltrados) : abaAtual === 'bolsas' ? paginaBolsas() : paginaDashboard()}
 
     <div class="footer">
       Elaborado por <strong>Keithy Domingos</strong><span>·</span>versão 2025<span>·</span>atualização 2026
@@ -1198,12 +1203,20 @@ function render(){
     });
   }
 
+  if(abaAtual === 'bolsas'){
+    const btnNovaBolsa = document.getElementById('btn-nova-bolsa');
+    if(btnNovaBolsa) btnNovaBolsa.onclick = () => abrirModalBolsa();
+    document.querySelectorAll('[data-editar-bolsa]').forEach(el=>{ el.onclick = () => abrirModalBolsa(el.dataset.editarBolsa); });
+    document.querySelectorAll('[data-excluir-bolsa]').forEach(el=>{ el.onclick = () => excluirBolsa(el.dataset.excluirBolsa); });
+  }
+
   document.querySelectorAll('[data-alerta-fase1-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase1Sim); });
   document.querySelectorAll('[data-alerta-fase1-nao]').forEach(el=>{ el.onclick = () => abrirModalFase1Nao(el.dataset.alertaFase1Nao); });
   document.querySelectorAll('[data-alerta-fase2-sim]').forEach(el=>{ el.onclick = () => marcarEmitido(el.dataset.alertaFase2Sim); });
   document.querySelectorAll('[data-alerta-fase2-nao]').forEach(el=>{ el.onclick = () => abrirModalFase2Nao(el.dataset.alertaFase2Nao); });
 
   if(abaAtual === 'dashboard') montarGraficos();
+  if(abaAtual === 'bolsas') montarGraficosBolsas();
 }
 
 function alertaHtml(a){
@@ -1328,6 +1341,173 @@ function emptyState(){
     return `<div class="empty-state"><p class="big">Nenhum resultado para "${escapeHtml(filtroTexto)}"</p><p>Tente outro termo ou limpe a busca.</p></div>`;
   }
   return `<div class="empty-state"><p class="big">Nenhum parecer registrado</p><p>Clique em "Novo parecer" para abrir o primeiro registro.</p></div>`;
+}
+
+/* ---------- Bolsas ---------- */
+
+function paginaBolsas(){
+  const registros = state.bolsas.slice().sort((a,b)=> b.ano - a.ano || a.modalidade.localeCompare(b.modalidade,'pt-BR'));
+  const totalSolicitadas = registros.reduce((s,b)=>s+b.solicitadas,0);
+  const totalConcedidas = registros.reduce((s,b)=>s+b.concedidas,0);
+
+  return `
+    <div class="actions">
+      <button class="btn" id="btn-nova-bolsa">+ Registrar bolsas</button>
+    </div>
+    <div class="dash-grid">
+      <div class="metric-card"><div class="num">${registros.length}</div><div class="lbl">Ciclos registrados</div></div>
+      <div class="metric-card"><div class="num">${totalSolicitadas}</div><div class="lbl">Total solicitadas</div></div>
+      <div class="metric-card green"><div class="num">${totalConcedidas}</div><div class="lbl">Total concedidas</div></div>
+    </div>
+    <div class="ledger" style="margin-bottom:1.5rem;">
+      ${registros.length ? `
+        <table>
+          <thead><tr><th>Ciclo</th><th>Modalidade</th><th>Solicitadas</th><th>Concedidas</th><th>% Concedido</th><th>Ações</th></tr></thead>
+          <tbody>
+            ${registros.map(b=>{
+              const pct = b.solicitadas > 0 ? Math.round((b.concedidas/b.solicitadas)*100) : 0;
+              return `<tr>
+                <td class="col-date">${b.ano}/${b.ano+1}</td>
+                <td class="col-title">${escapeHtml(b.modalidade)}</td>
+                <td>${b.solicitadas}</td>
+                <td>${b.concedidas}</td>
+                <td class="muted">${pct}%</td>
+                <td>
+                  <div class="row-actions">
+                    <button class="icon-btn" data-editar-bolsa="${b.id}" title="Editar" aria-label="Editar">✎</button>
+                    <button class="icon-btn danger" data-excluir-bolsa="${b.id}" title="Excluir" aria-label="Excluir">✕</button>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+        </table>
+      ` : `<div class="empty-state"><p class="big">Nenhuma bolsa registrada</p><p>Clique em "Registrar bolsas" para adicionar o primeiro ciclo.</p></div>`}
+    </div>
+    ${registros.length ? `
+    <div class="chart-grid">
+      <div class="chart-card"><h3>Solicitadas x concedidas por modalidade</h3>${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-modalidade"></canvas></div>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Evolução de bolsas concedidas por ciclo</h3>${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-evolucao"></canvas></div>` : avisoGraficoIndisponivel()}</div>
+    </div>
+    ` : ''}
+  `;
+}
+
+function abrirModalBolsa(bolsaId){
+  const overlay = criarOverlay();
+  const existente = bolsaId ? state.bolsas.find(b=>b.id===bolsaId) : null;
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>${existente ? 'Editar registro de bolsas' : 'Registrar bolsas do ano'}</h2>
+      <div class="field">
+        <label for="f-bolsa-modalidade">Modalidade</label>
+        <select id="f-bolsa-modalidade">
+          ${MODALIDADES_BOLSA.map(m=>`<option value="${escapeHtml(m)}" ${existente && existente.modalidade===m ? 'selected':''}>${escapeHtml(m)}</option>`).join('')}
+        </select>
+      </div>
+      <div class="field">
+        <label for="f-bolsa-ano">Ano de início do ciclo (setembro)</label>
+        <input id="f-bolsa-ano" type="number" min="2000" max="2100" value="${existente ? existente.ano : ''}" placeholder="Ex: 2023">
+        <p class="field-hint">Vigência de setembro a agosto do ano seguinte (12 meses).</p>
+      </div>
+      <div class="field-row">
+        <div class="field"><label for="f-bolsa-solicitadas">Solicitadas</label><input id="f-bolsa-solicitadas" type="number" min="0" value="${existente ? existente.solicitadas : ''}"></div>
+        <div class="field"><label for="f-bolsa-concedidas">Concedidas</label><input id="f-bolsa-concedidas" type="number" min="0" value="${existente ? existente.concedidas : ''}"></div>
+      </div>
+      <div class="field-error" id="err-bolsa"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="cancelar">Cancelar</button>
+        <button class="btn" id="salvar-bolsa">${existente ? 'Salvar' : 'Registrar'}</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('cancelar').onclick = fecharOverlay;
+  document.getElementById('salvar-bolsa').onclick = () => {
+    const modalidade = document.getElementById('f-bolsa-modalidade').value;
+    const ano = Number(document.getElementById('f-bolsa-ano').value);
+    const solicitadas = Number(document.getElementById('f-bolsa-solicitadas').value);
+    const concedidas = Number(document.getElementById('f-bolsa-concedidas').value);
+    const erro = document.getElementById('err-bolsa');
+    erro.textContent = '';
+    if(!ano || ano < 2000){ erro.textContent = 'Informe um ano válido.'; return; }
+    if(document.getElementById('f-bolsa-solicitadas').value === '' || solicitadas < 0){ erro.textContent = 'Informe a quantidade solicitada.'; return; }
+    if(document.getElementById('f-bolsa-concedidas').value === '' || concedidas < 0){ erro.textContent = 'Informe a quantidade concedida.'; return; }
+    if(concedidas > solicitadas){ erro.textContent = 'O nº de concedidas não pode ser maior que o de solicitadas.'; return; }
+
+    if(existente){
+      existente.modalidade = modalidade;
+      existente.ano = ano;
+      existente.solicitadas = solicitadas;
+      existente.concedidas = concedidas;
+    } else {
+      const duplicado = state.bolsas.find(b=>b.modalidade===modalidade && b.ano===ano);
+      if(duplicado){ erro.textContent = `Já existe um registro de ${modalidade} para o ciclo ${ano}/${ano+1}. Edite o registro existente em vez de criar outro.`; return; }
+      state.bolsas.push({ id: uid(), modalidade, ano, solicitadas, concedidas });
+    }
+    saveState();
+    fecharOverlay();
+    flashMsg = `Registro de ${modalidade} (${ano}/${ano+1}) salvo.`;
+    render();
+  };
+}
+
+function excluirBolsa(id){
+  state.bolsas = state.bolsas.filter(b=>b.id!==id);
+  saveState();
+  render();
+}
+
+function montarGraficosBolsas(){
+  if(!graficosDisponiveis()) return;
+  try{
+    if(chartInstances.bolsasModalidade){ chartInstances.bolsasModalidade.destroy(); }
+    if(chartInstances.bolsasEvolucao){ chartInstances.bolsasEvolucao.destroy(); }
+
+    const porModalidade = {};
+    MODALIDADES_BOLSA.forEach(m=> porModalidade[m] = { solicitadas:0, concedidas:0 });
+    state.bolsas.forEach(b=>{
+      if(!porModalidade[b.modalidade]) porModalidade[b.modalidade] = { solicitadas:0, concedidas:0 };
+      porModalidade[b.modalidade].solicitadas += b.solicitadas;
+      porModalidade[b.modalidade].concedidas += b.concedidas;
+    });
+    const modalidades = Object.keys(porModalidade);
+
+    const ctx1 = document.getElementById('chart-bolsas-modalidade');
+    if(ctx1){
+      chartInstances.bolsasModalidade = new Chart(ctx1, {
+        type:'bar',
+        data:{
+          labels: modalidades,
+          datasets:[
+            { label:'Solicitadas', data: modalidades.map(m=>porModalidade[m].solicitadas), backgroundColor:'#1C2B45' },
+            { label:'Concedidas', data: modalidades.map(m=>porModalidade[m].concedidas), backgroundColor:'#52734F' }
+          ]
+        },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      });
+    }
+
+    const ciclos = Array.from(new Set(state.bolsas.map(b=>b.ano))).sort((a,b)=>a-b);
+    const cores = { 'PIBIC':'#A9752E', 'PIBITI':'#1C2B45', 'PIBIC Cota':'#52734F', 'PIBIC-EM':'#9C3B34' };
+    const datasets = MODALIDADES_BOLSA.map(m=>({
+      label: m,
+      data: ciclos.map(ano => { const r = state.bolsas.find(b=>b.modalidade===m && b.ano===ano); return r ? r.concedidas : 0; }),
+      borderColor: cores[m] || '#5B6478',
+      backgroundColor: 'transparent',
+      tension: 0.25
+    }));
+
+    const ctx2 = document.getElementById('chart-bolsas-evolucao');
+    if(ctx2){
+      chartInstances.bolsasEvolucao = new Chart(ctx2, {
+        type:'line',
+        data:{ labels: ciclos.map(a=>`${a}/${a+1}`), datasets },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      });
+    }
+  }catch(e){
+    console.error('Falha ao montar gráficos de bolsas', e);
+  }
 }
 
 function excluirParecer(id){
