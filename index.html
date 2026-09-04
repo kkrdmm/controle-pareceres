@@ -1416,6 +1416,7 @@ function paginaBolsas(){
     ${registros.length ? `
     <div class="chart-grid">
       <div class="chart-card"><h3>Solicitadas x concedidas por modalidade</h3>${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-modalidade"></canvas></div>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Evolução de bolsas concedidas por ciclo</h3>${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-evolucao"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
         <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:0.8rem;">
           <h3 style="margin:0;">Solicitadas x concedidas por ano</h3>
@@ -1423,7 +1424,7 @@ function paginaBolsas(){
             ${MODALIDADES_BOLSA.map(m=>`<option value="${escapeHtml(m)}" ${modalidadeGraficoBolsas===m?'selected':''}>${escapeHtml(m)}</option>`).join('')}
           </select>
         </div>
-        ${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-evolucao"></canvas></div>` : avisoGraficoIndisponivel()}
+        ${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-por-ano"></canvas></div>` : avisoGraficoIndisponivel()}
       </div>
     </div>
     ` : ''}
@@ -1560,6 +1561,7 @@ function montarGraficosBolsas(){
   try{
     if(chartInstances.bolsasModalidade){ chartInstances.bolsasModalidade.destroy(); }
     if(chartInstances.bolsasEvolucao){ chartInstances.bolsasEvolucao.destroy(); }
+    if(chartInstances.bolsasPorAno){ chartInstances.bolsasPorAno.destroy(); }
 
     const porModalidade = {};
     MODALIDADES_BOLSA.forEach(m=> porModalidade[m] = { solicitadas:0, concedidas:0 });
@@ -1585,6 +1587,25 @@ function montarGraficosBolsas(){
       });
     }
 
+    const ciclos = Array.from(new Set(state.bolsas.map(b=>b.ano))).sort((a,b)=>a-b);
+    const cores = { 'PIBIC':'#A9752E', 'PIBITI':'#1C2B45', 'PIBIC Cota':'#52734F', 'PIBIC-EM':'#9C3B34' };
+    const datasetsEvolucao = MODALIDADES_BOLSA.map(m=>({
+      label: m,
+      data: ciclos.map(ano => { const r = state.bolsas.find(b=>b.modalidade===m && b.ano===ano); return r ? r.concedidas : 0; }),
+      borderColor: cores[m] || '#5B6478',
+      backgroundColor: 'transparent',
+      tension: 0.25
+    }));
+
+    const ctxEvolucao = document.getElementById('chart-bolsas-evolucao');
+    if(ctxEvolucao){
+      chartInstances.bolsasEvolucao = new Chart(ctxEvolucao, {
+        type:'line',
+        data:{ labels: ciclos.map(a=>`${a}/${a+1}`), datasets: datasetsEvolucao },
+        options:{ responsive:true, maintainAspectRatio:false, plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+      });
+    }
+
     const seletorModalidade = document.getElementById('f-modalidade-grafico-bolsas');
     if(seletorModalidade){
       seletorModalidade.onchange = (e) => {
@@ -1596,14 +1617,14 @@ function montarGraficosBolsas(){
     const registrosModalidade = state.bolsas
       .filter(b=>b.modalidade===modalidadeGraficoBolsas)
       .sort((a,b)=>a.ano-b.ano);
-    const anos = registrosModalidade.map(b=>`${b.ano}/${b.ano+1}`);
+    const anosPorAno = registrosModalidade.map(b=>`${b.ano}/${b.ano+1}`);
 
-    const ctx2 = document.getElementById('chart-bolsas-evolucao');
-    if(ctx2){
-      chartInstances.bolsasEvolucao = new Chart(ctx2, {
+    const ctxPorAno = document.getElementById('chart-bolsas-por-ano');
+    if(ctxPorAno){
+      chartInstances.bolsasPorAno = new Chart(ctxPorAno, {
         type:'bar',
         data:{
-          labels: anos,
+          labels: anosPorAno,
           datasets:[
             { label:'Solicitadas', data: registrosModalidade.map(b=>b.solicitadas), backgroundColor:'#1C2B45' },
             { label:'Concedidas', data: registrosModalidade.map(b=>b.concedidas), backgroundColor:'#52734F' }
