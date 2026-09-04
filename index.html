@@ -874,7 +874,7 @@ function abrirModalFase2Nao(parecerId, motivo){
           <select id="f-novo-parecerista-fase2">${listaOpcoes}</select>
           <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
             <input id="f-parecerista-fase2-usp" type="text" readonly style="flex:1;background:var(--paper-raised);">
-            <button type="button" class="btn-ghost btn-sm" data-copiar="f-parecerista-fase2-usp" data-status="status-usp-fase2">Copiar nº USP</button>
+            <button type="button" class="btn-ghost btn-sm" id="copiar-usp-fase2">Copiar nº USP</button>
           </div>
           <p class="field-hint" id="status-usp-fase2"></p>
         </div>
@@ -898,7 +898,22 @@ function abrirModalFase2Nao(parecerId, motivo){
     };
     document.getElementById('f-novo-parecerista-fase2').onchange = atualizarUspFase2;
     atualizarUspFase2();
-    ligarBotoesCopiar(overlay);
+    document.getElementById('copiar-usp-fase2').onclick = () => {
+      const id = document.getElementById('f-novo-parecerista-fase2').value;
+      const status = document.getElementById('status-usp-fase2');
+      if(!id){ status.textContent = 'Selecione um parecerista primeiro.'; return; }
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(id)
+          .then(()=>{ status.style.color='var(--green)'; status.textContent = `Nº USP ${id} copiado.`; })
+          .catch(()=>{ status.style.color='var(--ink-soft)'; status.textContent = 'Não foi possível copiar automaticamente — selecione o texto do campo ao lado e copie manualmente.'; });
+      } else {
+        const campo = document.getElementById('f-parecerista-fase2-usp');
+        campo.removeAttribute('readonly');
+        campo.select();
+        status.style.color='var(--ink-soft)';
+        status.textContent = 'Texto selecionado — use Ctrl+C (ou Cmd+C) para copiar.';
+      }
+    };
   }
   const btnConfirmar = document.getElementById('confirmar-troca');
   if(btnConfirmar){
