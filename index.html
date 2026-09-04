@@ -251,6 +251,12 @@ const TIPOS_SEM_PARECERISTA = ['Anuência do departamento - inicial', 'Anuência
 const PARECERISTA_CATEGORIAS = ['Docente','Pós-doutorando','Pesquisador colaborador','Externo'];
 
 const MODALIDADES_BOLSA = ['PIBIC', 'PIBITI', 'PIBIC Cota', 'PIBIC-EM'];
+const MODALIDADES_COM_CATEGORIA = ['PIBIC', 'PIBITI'];
+const CATEGORIAS_BOLSA = ['A', 'B', 'C', 'D', 'E'];
+
+function modalidadeTemCategoria(m){
+  return MODALIDADES_COM_CATEGORIA.includes(m);
+}
 
 const TEMPLATE_EMAIL_PADRAO_ANTIGO =
 `Prezado(a) {parecerista},
@@ -1368,7 +1374,7 @@ function paginaBolsas(){
               const pct = b.solicitadas > 0 ? Math.round((b.concedidas/b.solicitadas)*100) : 0;
               return `<tr>
                 <td class="col-date">${b.ano}/${b.ano+1}</td>
-                <td class="col-title">${escapeHtml(b.modalidade)}</td>
+                <td class="col-title">${escapeHtml(b.modalidade)}${b.porCategoria ? `<span class="sub">${CATEGORIAS_BOLSA.filter(c=>b.porCategoria[c] && b.porCategoria[c].solicitadas>0).map(c=>`${c}: ${b.porCategoria[c].concedidas}/${b.porCategoria[c].solicitadas}`).join(' · ')}</span>` : ''}</td>
                 <td>${b.solicitadas}</td>
                 <td>${b.concedidas}</td>
                 <td class="muted">${pct}%</td>
@@ -1396,59 +1402,114 @@ function paginaBolsas(){
 function abrirModalBolsa(bolsaId){
   const overlay = criarOverlay();
   const existente = bolsaId ? state.bolsas.find(b=>b.id===bolsaId) : null;
-  overlay.innerHTML = `
-    <div class="modal">
-      <h2>${existente ? 'Editar registro de bolsas' : 'Registrar bolsas do ano'}</h2>
-      <div class="field">
-        <label for="f-bolsa-modalidade">Modalidade</label>
-        <select id="f-bolsa-modalidade">
-          ${MODALIDADES_BOLSA.map(m=>`<option value="${escapeHtml(m)}" ${existente && existente.modalidade===m ? 'selected':''}>${escapeHtml(m)}</option>`).join('')}
-        </select>
-      </div>
-      <div class="field">
-        <label for="f-bolsa-ano">Ano de início do ciclo (setembro)</label>
-        <input id="f-bolsa-ano" type="number" min="2000" max="2100" value="${existente ? existente.ano : ''}" placeholder="Ex: 2023">
-        <p class="field-hint">Vigência de setembro a agosto do ano seguinte (12 meses).</p>
-      </div>
+
+  const montarCamposQuantidade = (modalidade) => {
+    if(modalidadeTemCategoria(modalidade)){
+      const porCategoria = (existente && existente.porCategoria) || {};
+      return `
+        <p class="field-hint" style="margin-bottom:0.6rem;">Informe solicitadas e concedidas em cada categoria. O total é somado automaticamente.</p>
+        <table class="mini-table" style="margin-bottom:0.8rem;">
+          <thead><tr><th>Categoria</th><th>Solicitadas</th><th>Concedidas</th></tr></thead>
+          <tbody>
+            ${CATEGORIAS_BOLSA.map(cat => `
+              <tr>
+                <td>${cat}</td>
+                <td><input id="f-bolsa-sol-${cat}" type="number" min="0" value="${porCategoria[cat] ? porCategoria[cat].solicitadas : ''}"></td>
+                <td><input id="f-bolsa-con-${cat}" type="number" min="0" value="${porCategoria[cat] ? porCategoria[cat].concedidas : ''}"></td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+    }
+    return `
       <div class="field-row">
         <div class="field"><label for="f-bolsa-solicitadas">Solicitadas</label><input id="f-bolsa-solicitadas" type="number" min="0" value="${existente ? existente.solicitadas : ''}"></div>
         <div class="field"><label for="f-bolsa-concedidas">Concedidas</label><input id="f-bolsa-concedidas" type="number" min="0" value="${existente ? existente.concedidas : ''}"></div>
       </div>
-      <div class="field-error" id="err-bolsa"></div>
-      <div class="modal-actions">
-        <button class="btn-ghost" id="cancelar">Cancelar</button>
-        <button class="btn" id="salvar-bolsa">${existente ? 'Salvar' : 'Registrar'}</button>
-      </div>
-    </div>
-  `;
-  document.getElementById('cancelar').onclick = fecharOverlay;
-  document.getElementById('salvar-bolsa').onclick = () => {
-    const modalidade = document.getElementById('f-bolsa-modalidade').value;
-    const ano = Number(document.getElementById('f-bolsa-ano').value);
-    const solicitadas = Number(document.getElementById('f-bolsa-solicitadas').value);
-    const concedidas = Number(document.getElementById('f-bolsa-concedidas').value);
-    const erro = document.getElementById('err-bolsa');
-    erro.textContent = '';
-    if(!ano || ano < 2000){ erro.textContent = 'Informe um ano válido.'; return; }
-    if(document.getElementById('f-bolsa-solicitadas').value === '' || solicitadas < 0){ erro.textContent = 'Informe a quantidade solicitada.'; return; }
-    if(document.getElementById('f-bolsa-concedidas').value === '' || concedidas < 0){ erro.textContent = 'Informe a quantidade concedida.'; return; }
-    if(concedidas > solicitadas){ erro.textContent = 'O nº de concedidas não pode ser maior que o de solicitadas.'; return; }
-
-    if(existente){
-      existente.modalidade = modalidade;
-      existente.ano = ano;
-      existente.solicitadas = solicitadas;
-      existente.concedidas = concedidas;
-    } else {
-      const duplicado = state.bolsas.find(b=>b.modalidade===modalidade && b.ano===ano);
-      if(duplicado){ erro.textContent = `Já existe um registro de ${modalidade} para o ciclo ${ano}/${ano+1}. Edite o registro existente em vez de criar outro.`; return; }
-      state.bolsas.push({ id: uid(), modalidade, ano, solicitadas, concedidas });
-    }
-    saveState();
-    fecharOverlay();
-    flashMsg = `Registro de ${modalidade} (${ano}/${ano+1}) salvo.`;
-    render();
+    `;
   };
+
+  const desenhar = () => {
+    const modalidadeAtual = document.getElementById('f-bolsa-modalidade')
+      ? document.getElementById('f-bolsa-modalidade').value
+      : (existente ? existente.modalidade : MODALIDADES_BOLSA[0]);
+    overlay.innerHTML = `
+      <div class="modal${modalidadeTemCategoria(modalidadeAtual) ? ' modal-wide' : ''}">
+        <h2>${existente ? 'Editar registro de bolsas' : 'Registrar bolsas do ano'}</h2>
+        <div class="field">
+          <label for="f-bolsa-modalidade">Modalidade</label>
+          <select id="f-bolsa-modalidade">
+            ${MODALIDADES_BOLSA.map(m=>`<option value="${escapeHtml(m)}" ${modalidadeAtual===m ? 'selected':''}>${escapeHtml(m)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-bolsa-ano">Ano de início do ciclo (setembro)</label>
+          <input id="f-bolsa-ano" type="number" min="2000" max="2100" value="${existente ? existente.ano : ''}" placeholder="Ex: 2023">
+          <p class="field-hint">Vigência de setembro a agosto do ano seguinte (12 meses).</p>
+        </div>
+        <div id="campo-quantidades-bolsa">${montarCamposQuantidade(modalidadeAtual)}</div>
+        <div class="field-error" id="err-bolsa"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="cancelar">Cancelar</button>
+          <button class="btn" id="salvar-bolsa">${existente ? 'Salvar' : 'Registrar'}</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('f-bolsa-modalidade').onchange = (e) => {
+      document.getElementById('campo-quantidades-bolsa').innerHTML = montarCamposQuantidade(e.target.value);
+    };
+    document.getElementById('cancelar').onclick = fecharOverlay;
+    document.getElementById('salvar-bolsa').onclick = () => {
+      const modalidade = document.getElementById('f-bolsa-modalidade').value;
+      const ano = Number(document.getElementById('f-bolsa-ano').value);
+      const erro = document.getElementById('err-bolsa');
+      erro.textContent = '';
+      if(!ano || ano < 2000){ erro.textContent = 'Informe um ano válido.'; return; }
+
+      let solicitadas, concedidas, porCategoria = null;
+      if(modalidadeTemCategoria(modalidade)){
+        porCategoria = {};
+        solicitadas = 0;
+        concedidas = 0;
+        for(const cat of CATEGORIAS_BOLSA){
+          const solEl = document.getElementById(`f-bolsa-sol-${cat}`);
+          const conEl = document.getElementById(`f-bolsa-con-${cat}`);
+          const sol = solEl.value === '' ? 0 : Number(solEl.value);
+          const con = conEl.value === '' ? 0 : Number(conEl.value);
+          if(sol < 0 || con < 0){ erro.textContent = `Valores da categoria ${cat} não podem ser negativos.`; return; }
+          if(con > sol){ erro.textContent = `Na categoria ${cat}, concedidas não pode ser maior que solicitadas.`; return; }
+          porCategoria[cat] = { solicitadas: sol, concedidas: con };
+          solicitadas += sol;
+          concedidas += con;
+        }
+        if(solicitadas === 0){ erro.textContent = 'Informe ao menos uma categoria com bolsas solicitadas.'; return; }
+      } else {
+        solicitadas = Number(document.getElementById('f-bolsa-solicitadas').value);
+        concedidas = Number(document.getElementById('f-bolsa-concedidas').value);
+        if(document.getElementById('f-bolsa-solicitadas').value === '' || solicitadas < 0){ erro.textContent = 'Informe a quantidade solicitada.'; return; }
+        if(document.getElementById('f-bolsa-concedidas').value === '' || concedidas < 0){ erro.textContent = 'Informe a quantidade concedida.'; return; }
+        if(concedidas > solicitadas){ erro.textContent = 'O nº de concedidas não pode ser maior que o de solicitadas.'; return; }
+      }
+
+      if(existente){
+        existente.modalidade = modalidade;
+        existente.ano = ano;
+        existente.solicitadas = solicitadas;
+        existente.concedidas = concedidas;
+        existente.porCategoria = porCategoria;
+      } else {
+        const duplicado = state.bolsas.find(b=>b.modalidade===modalidade && b.ano===ano);
+        if(duplicado){ erro.textContent = `Já existe um registro de ${modalidade} para o ciclo ${ano}/${ano+1}. Edite o registro existente em vez de criar outro.`; return; }
+        state.bolsas.push({ id: uid(), modalidade, ano, solicitadas, concedidas, porCategoria });
+      }
+      saveState();
+      fecharOverlay();
+      flashMsg = `Registro de ${modalidade} (${ano}/${ano+1}) salvo.`;
+      render();
+    };
+  };
+  desenhar();
 }
 
 function excluirBolsa(id){
