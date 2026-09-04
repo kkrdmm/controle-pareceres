@@ -1351,15 +1351,36 @@ function emptyState(){
 
 /* ---------- Bolsas ---------- */
 
+function anoCicloAtual(){
+  const hoje = new Date();
+  const mes = hoje.getMonth(); // 0=jan ... 8=set ... 11=dez
+  return mes >= 8 ? hoje.getFullYear() : hoje.getFullYear() - 1;
+}
+
+function cicloNaoConsolidado(ano){
+  // primeiros 7 meses do ciclo: setembro/ano a março/(ano+1)
+  const hoje = new Date();
+  const inicio = new Date(ano, 8, 1);
+  const fim = new Date(ano + 1, 2, 31, 23, 59, 59);
+  return hoje >= inicio && hoje <= fim;
+}
+
 function paginaBolsas(){
   const registros = state.bolsas.slice().sort((a,b)=> b.ano - a.ano || a.modalidade.localeCompare(b.modalidade,'pt-BR'));
   const totalSolicitadas = registros.reduce((s,b)=>s+b.solicitadas,0);
   const totalConcedidas = registros.reduce((s,b)=>s+b.concedidas,0);
+  const cicloAtual = anoCicloAtual();
+  const temRegistroNaoConsolidado = registros.some(b => b.ano === cicloAtual && cicloNaoConsolidado(b.ano));
 
   return `
     <div class="actions">
       <button class="btn" id="btn-nova-bolsa">+ Registrar bolsas</button>
     </div>
+    ${temRegistroNaoConsolidado ? `
+      <div class="flash" style="background:var(--brass-light);border-color:var(--brass);color:var(--brass-dark);">
+        Os dados do ciclo ${cicloAtual}/${cicloAtual+1} ainda são uma informação não consolidada, pois pode haver redistribuição de bolsas ao longo do período (setembro a março).
+      </div>
+    ` : ''}
     <div class="dash-grid">
       <div class="metric-card"><div class="num">${registros.length}</div><div class="lbl">Ciclos registrados</div></div>
       <div class="metric-card"><div class="num">${totalSolicitadas}</div><div class="lbl">Total solicitadas</div></div>
@@ -1372,8 +1393,9 @@ function paginaBolsas(){
           <tbody>
             ${registros.map(b=>{
               const pct = b.solicitadas > 0 ? Math.round((b.concedidas/b.solicitadas)*100) : 0;
+              const naoConsolidado = b.ano === cicloAtual && cicloNaoConsolidado(b.ano);
               return `<tr>
-                <td class="col-date">${b.ano}/${b.ano+1}</td>
+                <td class="col-date">${b.ano}/${b.ano+1}${naoConsolidado ? `<span class="badge-fase" style="color:var(--brass-dark);">não consolidado</span>` : ''}</td>
                 <td class="col-title">${escapeHtml(b.modalidade)}${b.porCategoria ? `<span class="sub">${CATEGORIAS_BOLSA.filter(c=>b.porCategoria[c] && b.porCategoria[c].solicitadas>0).map(c=>`${c}: ${b.porCategoria[c].concedidas}/${b.porCategoria[c].solicitadas}`).join(' · ')}</span>` : ''}</td>
                 <td>${b.solicitadas}</td>
                 <td>${b.concedidas}</td>
@@ -1447,6 +1469,12 @@ function abrirModalBolsa(bolsaId){
           <label for="f-bolsa-ano">Ano de início do ciclo (setembro)</label>
           <input id="f-bolsa-ano" type="number" min="2000" max="2100" value="${existente ? existente.ano : ''}" placeholder="Ex: 2023">
           <p class="field-hint">Vigência de setembro a agosto do ano seguinte (12 meses).</p>
+          ${(() => {
+            const anoRef = existente ? existente.ano : anoCicloAtual();
+            return (anoRef === anoCicloAtual() && cicloNaoConsolidado(anoRef))
+              ? `<p class="field-hint" style="color:var(--brass-dark);">Atenção: este ciclo ainda está em andamento (set/${anoRef} a mar/${anoRef+1}) — os números podem mudar por redistribuição.</p>`
+              : '';
+          })()}
         </div>
         <div id="campo-quantidades-bolsa">${montarCamposQuantidade(modalidadeAtual)}</div>
         <div class="field-error" id="err-bolsa"></div>
