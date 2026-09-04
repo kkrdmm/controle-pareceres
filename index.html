@@ -1358,6 +1358,8 @@ function paginaDashboard(){
 
   const { todosDeptos: todosDeptosGrafico } = calcularDadosDepartamento();
   const alturaGraficoDepto = Math.max(200, todosDeptosGrafico.length * 32 + 40);
+  const qtdCategoriasGrafico = new Set(state.pareceres.map(p=>labelCategoria(p))).size;
+  const alturaGraficoCategoria = Math.max(200, qtdCategoriasGrafico * 32 + 40);
 
   return `
     <div class="dash-grid">
@@ -1367,7 +1369,7 @@ function paginaDashboard(){
     </div>
     <div class="chart-grid">
       <div class="chart-card"><h3>Situação atual</h3>${graficosDisponiveis() ? `<canvas id="chart-status"></canvas>` : avisoGraficoIndisponivel()}</div>
-      <div class="chart-card"><h3>Pareceres por categoria</h3>${graficosDisponiveis() ? `<canvas id="chart-categoria"></canvas>` : avisoGraficoIndisponivel()}</div>
+      <div class="chart-card"><h3>Pareceres por categoria</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoCategoria}px;"><canvas id="chart-categoria"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card"><h3>Pareceres solicitados por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card"><h3>Pareceres emitidos por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento-emitidos"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
@@ -1462,7 +1464,7 @@ function montarGraficos(){
       chartInstances.categoria = new Chart(ctxCat, {
         type:'bar',
         data:{ labels:Object.keys(porCategoria), datasets:[{ data:Object.values(porCategoria), backgroundColor:'#A9752E' }] },
-        options:{ plugins:{ legend:{ display:false } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } }
+        options:{ responsive:true, maintainAspectRatio:false, indexAxis:'y', plugins:{ legend:{ display:false } }, scales:{ x:{ beginAtZero:true, ticks:{ precision:0 } } } }
       });
     }
 
