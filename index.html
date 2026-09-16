@@ -3062,16 +3062,32 @@ function abrirModalRelatorio(){
       </div>
       <div class="field-row">
         <div class="field">
-          <label for="f-rel-categoria">Categoria (opcional)</label>
-          <select id="f-rel-categoria">
-            <option value="">Todas</option>
-            ${CATEGORIAS_PARECER.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}
-          </select>
+          <label style="font-size:0.78rem;color:var(--ink-soft);display:block;margin-bottom:0.4rem;">Categorias (todas marcadas por padrão)</label>
+          <div class="list-scroll mini-table-wrap" style="max-height:180px;border:1px solid var(--line);border-radius:8px;padding:0.3rem 0.9rem;">
+            ${CATEGORIAS_PARECER.map(c=>`
+              <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.2rem;font-size:0.83rem;">
+                <input type="checkbox" class="rel-cat-check" value="${c.id}" checked> ${escapeHtml(c.label)}
+              </label>
+            `).join('')}
+          </div>
+          <div style="margin-top:0.3rem;">
+            <button type="button" class="btn-ghost btn-sm" id="rel-cat-todas">Marcar todas</button>
+            <button type="button" class="btn-ghost btn-sm" id="rel-cat-nenhuma">Desmarcar todas</button>
+          </div>
         </div>
         <div class="field">
-          <label for="f-rel-departamento">Departamento (opcional)</label>
-          <input id="f-rel-departamento" type="text" list="lista-departamentos-relatorio" placeholder="Todos">
-          <datalist id="lista-departamentos-relatorio">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+          <label style="font-size:0.78rem;color:var(--ink-soft);display:block;margin-bottom:0.4rem;">Departamentos (todos marcados por padrão)</label>
+          <div class="list-scroll mini-table-wrap" style="max-height:180px;border:1px solid var(--line);border-radius:8px;padding:0.3rem 0.9rem;">
+            ${departamentos.map(d=>`
+              <label style="display:flex;align-items:center;gap:0.5rem;padding:0.3rem 0.2rem;font-size:0.83rem;">
+                <input type="checkbox" class="rel-depto-check" value="${escapeHtml(d)}" checked> ${escapeHtml(d)}
+              </label>
+            `).join('')}
+          </div>
+          <div style="margin-top:0.3rem;">
+            <button type="button" class="btn-ghost btn-sm" id="rel-depto-todos">Marcar todos</button>
+            <button type="button" class="btn-ghost btn-sm" id="rel-depto-nenhum">Desmarcar todos</button>
+          </div>
         </div>
       </div>
       <p class="field-hint">O período considera a data em que cada parecer foi solicitado originalmente (mesmo que tenha sido reatribuído depois).</p>
@@ -3085,22 +3101,28 @@ function abrirModalRelatorio(){
     </div>
   `;
   document.getElementById('fechar-relatorio').onclick = () => { fecharOverlay(); render(); };
+  document.getElementById('rel-cat-todas').onclick = () => document.querySelectorAll('.rel-cat-check').forEach(el=>el.checked=true);
+  document.getElementById('rel-cat-nenhuma').onclick = () => document.querySelectorAll('.rel-cat-check').forEach(el=>el.checked=false);
+  document.getElementById('rel-depto-todos').onclick = () => document.querySelectorAll('.rel-depto-check').forEach(el=>el.checked=true);
+  document.getElementById('rel-depto-nenhum').onclick = () => document.querySelectorAll('.rel-depto-check').forEach(el=>el.checked=false);
   document.getElementById('gerar-relatorio').onclick = () => {
     const inicio = document.getElementById('f-rel-inicio').value;
     const fim = document.getElementById('f-rel-fim').value;
-    const categoriaFiltro = document.getElementById('f-rel-categoria').value;
-    const departamentoFiltro = document.getElementById('f-rel-departamento').value.trim();
+    const categoriasMarcadas = Array.from(document.querySelectorAll('.rel-cat-check:checked')).map(el=>el.value);
+    const departamentosMarcados = Array.from(document.querySelectorAll('.rel-depto-check:checked')).map(el=>el.value);
     const resultadoEl = document.getElementById('resultado-relatorio');
 
     if(!inicio || !fim){ resultadoEl.innerHTML = `<p class="field-error">Informe o período (data inicial e final).</p>`; return; }
     if(inicio > fim){ resultadoEl.innerHTML = `<p class="field-error">A data inicial não pode ser depois da data final.</p>`; return; }
+    if(categoriasMarcadas.length === 0){ resultadoEl.innerHTML = `<p class="field-error">Marque ao menos uma categoria.</p>`; return; }
+    if(departamentosMarcados.length === 0){ resultadoEl.innerHTML = `<p class="field-error">Marque ao menos um departamento.</p>`; return; }
 
     let filtrados = state.pareceres.filter(p=>{
       const d = dataSolicitacaoOriginal(p);
       return d && d >= inicio && d <= fim;
     });
-    if(categoriaFiltro) filtrados = filtrados.filter(p=>p.categoriaParecer===categoriaFiltro);
-    if(departamentoFiltro) filtrados = filtrados.filter(p=> normaliza(p.departamento)===normaliza(departamentoFiltro));
+    filtrados = filtrados.filter(p=>categoriasMarcadas.includes(p.categoriaParecer));
+    filtrados = filtrados.filter(p=> departamentosMarcados.some(d=>normaliza(d)===normaliza(p.departamento)));
 
     if(filtrados.length === 0){
       resultadoEl.innerHTML = `<p class="field-hint">Nenhum parecer solicitado nesse período com esses filtros.</p>`;
@@ -3165,13 +3187,18 @@ function abrirModalRelatorio(){
     const comIncidente = filtrados.filter(p=>p.historicoDecisoes.some(h=>h.resultado==='nao_emitido'));
     const taxaIncidente = (comIncidente.length / filtrados.length) * 100;
 
-    const nomeCategoriaFiltro = categoriaFiltro ? (CATEGORIAS_PARECER.find(c=>c.id===categoriaFiltro)||{}).label : 'Todas';
+    const nomesCategorias = categoriasMarcadas.length === CATEGORIAS_PARECER.length
+      ? 'Todas'
+      : categoriasMarcadas.map(id=>(CATEGORIAS_PARECER.find(c=>c.id===id)||{}).label).join(', ');
+    const nomesDepartamentos = departamentosMarcados.length === departamentos.length
+      ? 'Todos'
+      : departamentosMarcados.join(', ');
 
     const textoRelatorio =
 `RELATÓRIO DE PARECERES
 
 Período: ${fmtDate(inicio)} a ${fmtDate(fim)}
-Filtros: Categoria: ${nomeCategoriaFiltro} | Departamento: ${departamentoFiltro || 'Todos'}
+Filtros: Categoria: ${nomesCategorias} | Departamento: ${nomesDepartamentos}
 
 Total de pareceres solicitados no período: ${filtrados.length}
 Total concluídos: ${concluidos.length}
