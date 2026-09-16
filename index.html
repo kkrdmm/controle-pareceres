@@ -2558,6 +2558,23 @@ function parseLinhaParecer(row){
   };
 }
 
+function chaveDuplicidadeParecer(l){
+  return [
+    normaliza(l.processoAno),
+    normaliza(l.processoCodigo),
+    l.categoriaParecer,
+    normaliza(l.tipoParecer)
+  ].join('|');
+}
+
+function parecerJaExiste(linha){
+  const chave = chaveDuplicidadeParecer(linha);
+  return state.pareceres.some(p => chaveDuplicidadeParecer({
+    processoAno: p.processoAno, processoCodigo: p.processoCodigo,
+    categoriaParecer: p.categoriaParecer, tipoParecer: p.tipoParecer
+  }) === chave);
+}
+
 function importarLinhaParecer(linha){
   const hoje = todayIso();
   const atribuicoes = linha.parceristaNUSP ? [{ parceristaId: linha.parceristaNUSP, data: linha.dataSolicitacao }] : [];
@@ -3245,23 +3262,43 @@ function abrirModalImportarPareceres(){
       box.innerHTML = `<p class="field-error">Nenhuma linha reconhecida. Confira se a planilha tem colunas de Ano, Código e Data de solicitação preenchidas, com os cabeçalhos esperados.</p>`;
       return;
     }
-    const semParecerista = parsed.filter(l=>!l.parceristaNUSP).length;
-    const parceristaDesconhecido = parsed.filter(l=> l.parceristaNUSP && !state.pareceristas.some(p=>p.id===l.parceristaNUSP)).length;
+
+    // Remove duplicatas dentro da própria planilha (mesma chave aparecendo mais de uma vez)
+    const chavesVistas = new Set();
+    const semDuplicataInterna = [];
+    let duplicadasNaPlanilha = 0;
+    parsed.forEach(l=>{
+      const chave = chaveDuplicidadeParecer(l);
+      if(chavesVistas.has(chave)){ duplicadasNaPlanilha++; return; }
+      chavesVistas.add(chave);
+      semDuplicataInterna.push(l);
+    });
+
+    // Separa quem já existe no site (mesmo processo + categoria + tipo) de quem é realmente novo
+    const novos = semDuplicataInterna.filter(l => !parecerJaExiste(l));
+    const jaCadastrados = semDuplicataInterna.filter(l => parecerJaExiste(l));
+
+    const semParecerista = novos.filter(l=>!l.parceristaNUSP).length;
+    const parceristaDesconhecido = novos.filter(l=> l.parceristaNUSP && !state.pareceristas.some(p=>p.id===l.parceristaNUSP)).length;
+
     box.innerHTML = `
       <div class="import-preview">
-        <strong>${parsed.length} de ${totalLinhas} linha(s) reconhecida(s):</strong>
-        ${parsed.slice(0,8).map(l=>`<div>${escapeHtml(l.processoAno)}/${escapeHtml(l.processoCodigo)} — ${escapeHtml(labelCategoriaId(l.categoriaParecer))}${l.tipoParecer?' · '+escapeHtml(l.tipoParecer):''} — ${l.parceristaNUSP ? (nomeParecerista(l.parceristaNUSP)!=='—' ? escapeHtml(nomeParecerista(l.parceristaNUSP)) : 'nº USP '+escapeHtml(l.parceristaNUSP)+' (não cadastrado)') : 'sem parecerista'} — ${l.dataConclusao ? 'concluído' : 'em aberto'}</div>`).join('')}
-        ${parsed.length>8 ? `<div class="muted">e mais ${parsed.length-8}…</div>` : ''}
+        <strong>${novos.length} parecer(es) novo(s), de ${totalLinhas} linha(s) na planilha:</strong>
+        ${novos.slice(0,8).map(l=>`<div>${escapeHtml(l.processoAno)}/${escapeHtml(l.processoCodigo)} — ${escapeHtml(labelCategoriaId(l.categoriaParecer))}${l.tipoParecer?' · '+escapeHtml(l.tipoParecer):''} — ${l.parceristaNUSP ? (nomeParecerista(l.parceristaNUSP)!=='—' ? escapeHtml(nomeParecerista(l.parceristaNUSP)) : 'nº USP '+escapeHtml(l.parceristaNUSP)+' (não cadastrado)') : 'sem parecerista'} — ${l.dataConclusao ? 'concluído' : 'em aberto'}</div>`).join('')}
+        ${novos.length>8 ? `<div class="muted">e mais ${novos.length-8}…</div>` : ''}
       </div>
       ${totalLinhas > parsed.length ? `<p class="field-hint">${totalLinhas-parsed.length} linha(s) ignorada(s) por falta de Ano, Código ou Data de solicitação.</p>` : ''}
+      ${duplicadasNaPlanilha ? `<p class="field-hint">${duplicadasNaPlanilha} linha(s) repetida(s) dentro da própria planilha (mesmo processo, categoria e tipo) — contadas só uma vez.</p>` : ''}
+      ${jaCadastrados.length ? `<p class="field-hint" style="color:var(--brass-dark);">${jaCadastrados.length} linha(s) já existem no site (mesmo processo + categoria + tipo) — <strong>não serão importadas de novo</strong>, pra não duplicar o que você já cadastrou manualmente.</p>` : ''}
       ${semParecerista ? `<p class="field-hint">${semParecerista} linha(s) sem parecerista informado — serão importadas como "anuência do departamento" (sem indicação de pessoa).</p>` : ''}
       ${parceristaDesconhecido ? `<p class="field-hint" style="color:var(--brass-dark);">${parceristaDesconhecido} linha(s) citam um nº USP de parecerista que ainda não está cadastrado — serão importadas mesmo assim, mas o nome só aparece depois de cadastrar essa pessoa em "Pareceristas".</p>` : ''}
-      <button class="btn" id="confirmar-importacao-pareceres">Importar ${parsed.length} parecer(es)</button>
+      ${novos.length ? `<button class="btn" id="confirmar-importacao-pareceres">Importar ${novos.length} parecer(es) novo(s)</button>` : `<p class="field-hint">Nada para importar — todas as linhas reconhecidas já estão cadastradas no site.</p>`}
     `;
+    if(novos.length === 0) return;
     document.getElementById('confirmar-importacao-pareceres').onclick = () => {
-      parsed.forEach(linha => importarLinhaParecer(linha));
+      novos.forEach(linha => importarLinhaParecer(linha));
       saveState();
-      flashMsg = `Importação concluída: ${parsed.length} parecer(es) adicionado(s).`;
+      flashMsg = `Importação concluída: ${novos.length} parecer(es) novo(s) adicionado(s)${jaCadastrados.length ? ` (${jaCadastrados.length} já existentes foram ignorados)` : ''}.`;
       fecharOverlay();
       render();
     };
