@@ -705,8 +705,9 @@ function conflitantesDe(nUSP){
   return Array.from(conjunto);
 }
 
-function sugerirParecerista(departamento, excluirIds, apenasComissao){
+function sugerirParecerista(departamento, excluirIds, apenasComissao, offset){
   excluirIds = excluirIds || [];
+  offset = offset || 0;
   let ativos = parceristasAtivos().filter(p=> !excluirIds.includes(p.id));
   const naoStaff = ativos.filter(p=> !p.staff);
   ativos = naoStaff.length ? naoStaff : ativos; // evita sugerir staff, exceto se não houver mais ninguém
@@ -729,7 +730,9 @@ function sugerirParecerista(departamento, excluirIds, apenasComissao){
     if(!a.last && !b.last) return 0;
     return a.last < b.last ? -1 : (a.last > b.last ? 1 : 0);
   });
-  return withStats.length ? withStats[0].p : null;
+  if(!withStats.length) return null;
+  const indice = offset % withStats.length;
+  return withStats[indice].p;
 }
 
 function departamentosConhecidos(){
@@ -1989,17 +1992,19 @@ function abrirModalNovo(){
   const overlay = criarOverlay();
   const departamentos = departamentosConhecidos();
 
+  let sugestaoOffset = 0;
+
   const montarOpcoesParecerista = (departamento, autorNUSP, contexto) => {
     contexto = contexto || {};
     const excluir = autorNUSP ? [autorNUSP, ...conflitantesDe(autorNUSP)] : [];
     let ativos = parceristasAtivos().filter(p=> !excluir.includes(p.id));
     if(contexto.apenasComissao) ativos = ativos.filter(p=>p.comissaoPesquisa);
     let continuidade = null;
-    if(!TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
+    if(sugestaoOffset === 0 && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
       const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
       if(anterior && ativos.some(p=>p.id===anterior.id)) continuidade = anterior;
     }
-    const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir, contexto.apenasComissao) : null);
+    const sugerido = continuidade || (departamento ? sugerirParecerista(departamento, excluir, contexto.apenasComissao, sugestaoOffset) : null);
     const grupo = departamento ? grupoDoDepartamento(departamento) : null;
     if(ativos.length === 0){
       return contexto.apenasComissao ? `<option value="">— nenhum membro da comissão de pesquisa ativo —</option>` : '';
@@ -2063,6 +2068,9 @@ function abrirModalNovo(){
         <p class="field-hint" id="aviso-continuidade" style="display:none;color:var(--brass-dark);"></p>
         <select id="f-parecerista">${montarOpcoesParecerista('', '')}</select>
         <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
+          <button type="button" class="btn-ghost btn-sm" id="nova-sugestao-parecerista">↻ Nova sugestão</button>
+        </div>
+        <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
           <input id="f-parecerista-usp" type="text" readonly style="flex:1;background:var(--paper-raised);">
           <button type="button" class="btn-ghost btn-sm" id="copiar-usp-parecerista">Copiar nº USP</button>
         </div>
@@ -2101,8 +2109,8 @@ function abrirModalNovo(){
   const ligarEventosTipo = () => {
     const tipoEl = document.getElementById('f-tipo');
     if(tipoEl){
-      tipoEl.onchange = () => { atualizarVisibilidadeParecerista(); atualizarSugestao(); };
-      tipoEl.oninput = () => { atualizarVisibilidadeParecerista(); atualizarSugestao(); };
+      tipoEl.onchange = () => { atualizarVisibilidadeParecerista(); atualizarSugestaoComReset(); };
+      tipoEl.oninput = () => { atualizarVisibilidadeParecerista(); atualizarSugestaoComReset(); };
     }
     atualizarVisibilidadeParecerista();
   };
@@ -2125,7 +2133,7 @@ function abrirModalNovo(){
     document.getElementById('f-parecerista').innerHTML = montarOpcoesParecerista(departamento, autorNUSP, contexto);
     atualizarCampoUsp();
     const avisoContinuidade = document.getElementById('aviso-continuidade');
-    if(!TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
+    if(sugestaoOffset === 0 && !TIPOS_SEM_PARECERISTA.includes(contexto.tipoParecer)){
       const anterior = parceristaAnteriorDoProcesso(contexto.ano, contexto.codigo, contexto.categoria);
       if(anterior){
         avisoContinuidade.style.display = 'block';
@@ -2138,6 +2146,10 @@ function abrirModalNovo(){
     }
   };
   document.getElementById('f-parecerista').onchange = atualizarCampoUsp;
+  document.getElementById('nova-sugestao-parecerista').onclick = () => {
+    sugestaoOffset += 1;
+    atualizarSugestao();
+  };
   document.getElementById('copiar-usp-parecerista').onclick = () => {
     const id = document.getElementById('f-parecerista').value;
     const status = document.getElementById('copiar-usp-status');
@@ -2161,6 +2173,7 @@ function abrirModalNovo(){
   atualizarCampoUsp();
   document.getElementById('campo-tipo').innerHTML = montarCampoTipo(document.getElementById('f-categoria').value);
   ligarEventosTipo();
+  const atualizarSugestaoComReset = () => { sugestaoOffset = 0; atualizarSugestao(); };
   document.getElementById('f-categoria').onchange = (e) => {
     const ehOutros = e.target.value === 'outros';
     document.getElementById('campo-outros').style.display = ehOutros ? 'block' : 'none';
@@ -2168,12 +2181,12 @@ function abrirModalNovo(){
     if(!ehOutros) document.getElementById('f-comissao-outros').classList.remove('on');
     document.getElementById('campo-tipo').innerHTML = montarCampoTipo(e.target.value);
     ligarEventosTipo();
-    atualizarSugestao();
+    atualizarSugestaoComReset();
   };
-  document.getElementById('f-ano').oninput = atualizarSugestao;
-  document.getElementById('f-codigo').oninput = atualizarSugestao;
-  document.getElementById('f-departamento').oninput = atualizarSugestao;
-  document.getElementById('f-autor-nusp').oninput = atualizarSugestao;
+  document.getElementById('f-ano').oninput = atualizarSugestaoComReset;
+  document.getElementById('f-codigo').oninput = atualizarSugestaoComReset;
+  document.getElementById('f-departamento').oninput = atualizarSugestaoComReset;
+  document.getElementById('f-autor-nusp').oninput = atualizarSugestaoComReset;
   document.getElementById('cancelar').onclick = fecharOverlay;
   document.getElementById('salvar').onclick = () => {
     const ano = document.getElementById('f-ano').value.trim();
