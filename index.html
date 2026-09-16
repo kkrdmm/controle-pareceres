@@ -300,6 +300,8 @@ let ordenacao = { coluna: null, direcao: 'asc' };
 let filtroTextoReciprocidade = '';
 let ordenacaoReciprocidade = { coluna: null, direcao: 'asc' };
 let modalidadeGraficoBolsas = 'PIBIC';
+let filtroTextoNaoEmitidos = '';
+let ordenacaoNaoEmitidos = { coluna: null, direcao: 'asc' };
 let abaAtual = 'pareceres';
 let flashMsg = null;
 let chartInstances = {};
@@ -1220,6 +1222,27 @@ function render(){
   }
 
   if(abaAtual === 'dashboard'){
+    const buscaNaoEmitidos = document.getElementById('f-busca-nao-emitidos');
+    if(buscaNaoEmitidos){
+      buscaNaoEmitidos.oninput = (e) => {
+        filtroTextoNaoEmitidos = e.target.value;
+        const cursor = e.target.selectionStart;
+        render();
+        const novoBusca = document.getElementById('f-busca-nao-emitidos');
+        if(novoBusca){ novoBusca.focus(); novoBusca.setSelectionRange(cursor, cursor); }
+      };
+    }
+    document.querySelectorAll('[data-ordenar-nao-emitidos]').forEach(el=>{
+      el.onclick = () => {
+        const coluna = el.dataset.ordenarNaoEmitidos;
+        if(ordenacaoNaoEmitidos.coluna === coluna){
+          ordenacaoNaoEmitidos.direcao = ordenacaoNaoEmitidos.direcao === 'asc' ? 'desc' : 'asc';
+        } else {
+          ordenacaoNaoEmitidos = { coluna, direcao: 'asc' };
+        }
+        render();
+      };
+    });
     const buscaRecip = document.getElementById('f-busca-reciprocidade');
     if(buscaRecip){
       buscaRecip.oninput = (e) => {
@@ -1370,6 +1393,29 @@ function ordenarReciprocidade(lista){
   copia.sort((a,b)=>{
     let va = a[coluna], vb = b[coluna];
     const numerico = ['deu','recebeu','saldo'].includes(coluna);
+    const cmp = numerico ? (va - vb) : String(va).localeCompare(String(vb), 'pt-BR', { numeric:true, sensitivity:'base' });
+    return cmp * dir;
+  });
+  return copia;
+}
+
+function thOrdenavelNaoEmitidos(label, coluna){
+  const ativo = ordenacaoNaoEmitidos.coluna === coluna;
+  const seta = ativo ? (ordenacaoNaoEmitidos.direcao==='asc' ? '▲' : '▼') : '⇅';
+  return `<th data-ordenar-nao-emitidos="${coluna}" style="cursor:pointer;user-select:none;">${label} <span style="opacity:${ativo?1:0.4};font-size:0.75em;">${seta}</span></th>`;
+}
+
+function ordenarNaoEmitidos(lista){
+  const copia = lista.slice();
+  const coluna = ordenacaoNaoEmitidos.coluna;
+  if(!coluna){
+    copia.sort((a,b)=> (b.prazoPerdido+b.declinado) - (a.prazoPerdido+a.declinado));
+    return copia;
+  }
+  const dir = ordenacaoNaoEmitidos.direcao === 'asc' ? 1 : -1;
+  copia.sort((a,b)=>{
+    let va = a[coluna], vb = b[coluna];
+    const numerico = ['prazoPerdido','declinado'].includes(coluna);
     const cmp = numerico ? (va - vb) : String(va).localeCompare(String(vb), 'pt-BR', { numeric:true, sensitivity:'base' });
     return cmp * dir;
   });
@@ -1764,10 +1810,15 @@ function paginaDashboard(){
       }
     }
   }));
-  const ranking = Object.keys(naoEmitidos).map(id=>({
+  let ranking = Object.keys(naoEmitidos).map(id=>({
     id, nome: nomeParecerista(id), departamento: (state.pareceristas.find(p=>p.id===id)||{}).departamento || '—',
     ...naoEmitidos[id]
-  })).sort((a,b)=> (b.prazoPerdido+b.declinado) - (a.prazoPerdido+a.declinado));
+  }));
+  if(filtroTextoNaoEmitidos.trim()){
+    const termo = normaliza(filtroTextoNaoEmitidos);
+    ranking = ranking.filter(r => normaliza(r.nome).includes(termo) || normaliza(r.departamento).includes(termo));
+  }
+  ranking = ordenarNaoEmitidos(ranking);
 
   let reciprocidade = state.pareceristas
     .map(p=>({ id:p.id, nome:p.nome, departamento:p.departamento||'—', deu: contarAtribuicoes(p.id), recebeu: contarAvaliacoesRecebidas(p.id), saldo: saldoReciprocidade(p.id) }))
@@ -1796,14 +1847,17 @@ function paginaDashboard(){
       <div class="chart-card"><h3>Pareceres emitidos por departamento</h3>${graficosDisponiveis() ? `<div style="height:${alturaGraficoDepto}px;"><canvas id="chart-departamento-emitidos"></canvas></div>` : avisoGraficoIndisponivel()}</div>
       <div class="chart-card">
         <h3>Pareceristas que não emitiram</h3>
+        <input id="f-busca-nao-emitidos" type="text" placeholder="Buscar por nome ou departamento..." value="${escapeHtml(filtroTextoNaoEmitidos)}" style="width:100%;padding:0.45rem 0.7rem;border:1px solid var(--line);border-radius:20px;background:var(--paper);font-size:0.82rem;margin-bottom:0.7rem;">
         ${ranking.length ? `
           <div class="rank-table-wrap">
           <table class="rank-table">
-            <thead><tr><th>Parecerista</th><th>Depto.</th><th>Perdeu o prazo</th><th>Declinou (justificado)</th></tr></thead>
+            <thead><tr>
+              ${thOrdenavelNaoEmitidos('Parecerista','nome')}${thOrdenavelNaoEmitidos('Depto.','departamento')}${thOrdenavelNaoEmitidos('Perdeu o prazo','prazoPerdido')}${thOrdenavelNaoEmitidos('Declinou (justificado)','declinado')}
+            </tr></thead>
             <tbody>${ranking.map(r=>`<tr><td>${escapeHtml(r.nome)}</td><td class="muted">${escapeHtml(r.departamento)}</td><td>${r.prazoPerdido}</td><td>${r.declinado}</td></tr>`).join('')}</tbody>
           </table>
           </div>
-        ` : `<p class="field-hint">Nenhuma pendência registrada até o momento.</p>`}
+        ` : `<p class="field-hint">${filtroTextoNaoEmitidos.trim() ? `Nenhum resultado para "${escapeHtml(filtroTextoNaoEmitidos)}".` : 'Nenhuma pendência registrada até o momento.'}</p>`}
       </div>
       <div class="chart-card">
         <h3>Balanço de reciprocidade</h3>
