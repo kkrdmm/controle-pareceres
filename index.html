@@ -624,6 +624,15 @@ function parceristaAtualId(parecer){
   return at && at.length ? at[at.length-1].parceristaId : null;
 }
 
+function dataSolicitacaoOriginal(parecer){
+  return (parecer.atribuicoes && parecer.atribuicoes.length) ? parecer.atribuicoes[0].data : parecer.dataSolicitacaoAtual;
+}
+
+function diasEntre(isoInicio, isoFim){
+  if(!isoInicio || !isoFim) return null;
+  return Math.round((new Date(isoFim+'T00:00:00') - new Date(isoInicio+'T00:00:00')) / 86400000);
+}
+
 function parceristaAnteriorDoProcesso(ano, codigo, categoria){
   if(!ano || !codigo || !categoria) return null;
   const candidatos = state.pareceres
@@ -1190,6 +1199,7 @@ function render(){
     document.getElementById('btn-conflitos').onclick = abrirModalConflitos;
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
     document.getElementById('btn-declaracao').onclick = abrirModalDeclaracao;
+    document.getElementById('btn-relatorio').onclick = abrirModalRelatorio;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
@@ -1317,6 +1327,7 @@ function paginaPareceres(lista){
       <button class="btn-ghost" id="btn-conflitos">Conflitos de interesse</button>
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
       <button class="btn-ghost" id="btn-declaracao">Declarações</button>
+      <button class="btn-ghost" id="btn-relatorio">Relatórios</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
     <div class="filters" style="align-items:center;">
@@ -2901,6 +2912,172 @@ function abrirModalConflitos(){
 
 
 /* ---------- Modal: declaração de pareceres emitidos ---------- */
+
+/* ---------- Relatórios ---------- */
+
+function abrirModalRelatorio(){
+  const overlay = criarOverlay();
+  const departamentos = departamentosConhecidos();
+  overlay.innerHTML = `
+    <div class="modal modal-wide">
+      <h2>Gerar relatório</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">Estatísticas dos pareceres solicitados num período — quantidade por categoria/tipo, tempo médio de emissão, extremos, departamentos e pareceristas em destaque.</p>
+      <div class="field-row">
+        <div class="field"><label for="f-rel-inicio">Período — de</label><input id="f-rel-inicio" type="date" max="${todayIso()}"></div>
+        <div class="field"><label for="f-rel-fim">até</label><input id="f-rel-fim" type="date" max="${todayIso()}"></div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="f-rel-categoria">Categoria (opcional)</label>
+          <select id="f-rel-categoria">
+            <option value="">Todas</option>
+            ${CATEGORIAS_PARECER.map(c=>`<option value="${c.id}">${c.label}</option>`).join('')}
+          </select>
+        </div>
+        <div class="field">
+          <label for="f-rel-departamento">Departamento (opcional)</label>
+          <input id="f-rel-departamento" type="text" list="lista-departamentos-relatorio" placeholder="Todos">
+          <datalist id="lista-departamentos-relatorio">${departamentos.map(d=>`<option value="${escapeHtml(d)}">`).join('')}</datalist>
+        </div>
+      </div>
+      <p class="field-hint">O período considera a data em que cada parecer foi solicitado originalmente (mesmo que tenha sido reatribuído depois).</p>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn-ghost btn-sm" id="gerar-relatorio">Gerar relatório</button>
+      </div>
+      <div id="resultado-relatorio"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="fechar-relatorio">Fechar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('fechar-relatorio').onclick = () => { fecharOverlay(); render(); };
+  document.getElementById('gerar-relatorio').onclick = () => {
+    const inicio = document.getElementById('f-rel-inicio').value;
+    const fim = document.getElementById('f-rel-fim').value;
+    const categoriaFiltro = document.getElementById('f-rel-categoria').value;
+    const departamentoFiltro = document.getElementById('f-rel-departamento').value.trim();
+    const resultadoEl = document.getElementById('resultado-relatorio');
+
+    if(!inicio || !fim){ resultadoEl.innerHTML = `<p class="field-error">Informe o período (data inicial e final).</p>`; return; }
+    if(inicio > fim){ resultadoEl.innerHTML = `<p class="field-error">A data inicial não pode ser depois da data final.</p>`; return; }
+
+    let filtrados = state.pareceres.filter(p=>{
+      const d = dataSolicitacaoOriginal(p);
+      return d && d >= inicio && d <= fim;
+    });
+    if(categoriaFiltro) filtrados = filtrados.filter(p=>p.categoriaParecer===categoriaFiltro);
+    if(departamentoFiltro) filtrados = filtrados.filter(p=> normaliza(p.departamento)===normaliza(departamentoFiltro));
+
+    if(filtrados.length === 0){
+      resultadoEl.innerHTML = `<p class="field-hint">Nenhum parecer solicitado nesse período com esses filtros.</p>`;
+      return;
+    }
+
+    // 1) Quantidade por categoria e tipo
+    const porCategoriaTipo = {};
+    filtrados.forEach(p=>{
+      const chave = labelCategoria(p) + (p.tipoParecer ? ' — ' + p.tipoParecer : '');
+      porCategoriaTipo[chave] = (porCategoriaTipo[chave]||0) + 1;
+    });
+
+    // 2) Tempo médio de emissão (só concluídos), geral + por categoria + por departamento
+    const concluidos = filtrados.filter(p=>p.dataConclusao);
+    const diasDe = p => diasEntre(dataSolicitacaoOriginal(p), p.dataConclusao);
+    const mediaGeral = concluidos.length ? (concluidos.reduce((s,p)=>s+diasDe(p),0) / concluidos.length) : null;
+
+    const mediaPorGrupo = (chaveFn) => {
+      const grupos = {};
+      concluidos.forEach(p=>{
+        const chave = chaveFn(p);
+        grupos[chave] = grupos[chave] || { soma:0, n:0 };
+        grupos[chave].soma += diasDe(p);
+        grupos[chave].n++;
+      });
+      return Object.keys(grupos).map(k=>({ nome:k, media: grupos[k].soma/grupos[k].n, n: grupos[k].n })).sort((a,b)=>a.media-b.media);
+    };
+    const mediaPorCategoria = mediaPorGrupo(p=>labelCategoria(p));
+    const mediaPorDepto = mediaPorGrupo(p=>p.departamento || 'Não informado');
+
+    // 3) Mais rápido e mais lento
+    let maisRapido = null, maisLento = null;
+    concluidos.forEach(p=>{
+      const dias = diasDe(p);
+      if(maisRapido === null || dias < diasDe(maisRapido)) maisRapido = p;
+      if(maisLento === null || dias > diasDe(maisLento)) maisLento = p;
+    });
+
+    // 4) Departamento que mais solicita x mais emite
+    const porDeptoSolicitado = {};
+    filtrados.forEach(p=>{ const d = p.departamento || 'Não informado'; porDeptoSolicitado[d] = (porDeptoSolicitado[d]||0)+1; });
+    const porDeptoEmitido = {};
+    concluidos.forEach(p=>{
+      const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
+      const d = (parecerista && parecerista.departamento) || p.departamento || 'Não informado';
+      porDeptoEmitido[d] = (porDeptoEmitido[d]||0)+1;
+    });
+    const topDeptoSolicitado = Object.entries(porDeptoSolicitado).sort((a,b)=>b[1]-a[1])[0];
+    const topDeptoEmitido = Object.entries(porDeptoEmitido).sort((a,b)=>b[1]-a[1])[0];
+
+    // 5) Parecerista que mais emitiu
+    const porParecerista = {};
+    concluidos.forEach(p=>{
+      const id = parceristaAtualId(p);
+      if(!id) return;
+      porParecerista[id] = (porParecerista[id]||0)+1;
+    });
+    const topParecerista = Object.entries(porParecerista).sort((a,b)=>b[1]-a[1])[0];
+
+    // 6) Taxa de perda de prazo / declínio
+    const comIncidente = filtrados.filter(p=>p.historicoDecisoes.some(h=>h.resultado==='nao_emitido'));
+    const taxaIncidente = (comIncidente.length / filtrados.length) * 100;
+
+    const nomeCategoriaFiltro = categoriaFiltro ? (CATEGORIAS_PARECER.find(c=>c.id===categoriaFiltro)||{}).label : 'Todas';
+
+    const textoRelatorio =
+`RELATÓRIO DE PARECERES
+
+Período: ${fmtDate(inicio)} a ${fmtDate(fim)}
+Filtros: Categoria: ${nomeCategoriaFiltro} | Departamento: ${departamentoFiltro || 'Todos'}
+
+Total de pareceres solicitados no período: ${filtrados.length}
+Total concluídos: ${concluidos.length}
+
+QUANTIDADE POR CATEGORIA E TIPO
+${Object.keys(porCategoriaTipo).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(k=>`- ${k}: ${porCategoriaTipo[k]}`).join('\n')}
+
+TEMPO MÉDIO DE EMISSÃO (dias corridos, desde a solicitação original)
+${mediaGeral !== null ? `Geral: ${mediaGeral.toFixed(1)} dias (${concluidos.length} parecer(es) concluído(s))` : 'Sem pareceres concluídos no período para calcular.'}
+${mediaPorCategoria.length ? `\nPor categoria:\n${mediaPorCategoria.map(g=>`- ${g.nome}: ${g.media.toFixed(1)} dias (${g.n})`).join('\n')}` : ''}
+${mediaPorDepto.length ? `\nPor departamento:\n${mediaPorDepto.map(g=>`- ${g.nome}: ${g.media.toFixed(1)} dias (${g.n})`).join('\n')}` : ''}
+
+MAIS RÁPIDO E MAIS LENTO
+${maisRapido ? `Mais rápido: nº ${pad(maisRapido.numero)} — processo ${numeroProcesso(maisRapido)} — ${escapeHtml(descricaoResponsavel(maisRapido))} — ${diasDe(maisRapido)} dia(s)` : 'Sem dados suficientes.'}
+${maisLento ? `Mais lento: nº ${pad(maisLento.numero)} — processo ${numeroProcesso(maisLento)} — ${escapeHtml(descricaoResponsavel(maisLento))} — ${diasDe(maisLento)} dia(s)` : ''}
+
+DEPARTAMENTO QUE MAIS SOLICITA E MAIS EMITE
+${topDeptoSolicitado ? `Mais solicita: ${topDeptoSolicitado[0]} (${topDeptoSolicitado[1]} parecer(es))` : '—'}
+${topDeptoEmitido ? `Mais emite: ${topDeptoEmitido[0]} (${topDeptoEmitido[1]} parecer(es) concluído(s))` : '—'}
+
+PARECERISTA QUE MAIS EMITIU
+${topParecerista ? `${escapeHtml(nomeParecerista(topParecerista[0]))} — ${topParecerista[1]} parecer(es)` : 'Sem dados suficientes.'}
+
+TAXA DE PERDA DE PRAZO / DECLÍNIO
+${comIncidente.length} de ${filtrados.length} parecer(es) (${taxaIncidente.toFixed(1)}%) precisaram de cobrança ou troca de parecerista.`;
+
+    resultadoEl.innerHTML = `
+      <div class="field">
+        <label>Texto do relatório</label>
+        <textarea id="f-texto-relatorio" rows="20" style="font-family:'IBM Plex Mono', monospace; font-size:0.78rem;">${escapeHtml(textoRelatorio)}</textarea>
+        <div style="display:flex;justify-content:flex-end;margin-top:0.4rem;">
+          <button type="button" class="btn-ghost btn-sm" data-copiar="f-texto-relatorio" data-status="status-relatorio">Copiar relatório</button>
+        </div>
+        <p class="field-hint" id="status-relatorio"></p>
+      </div>
+    `;
+    ligarBotoesCopiar(overlay);
+  };
+}
+
 
 function abrirModalDeclaracao(){
   const overlay = criarOverlay();
