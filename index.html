@@ -2563,7 +2563,8 @@ function chaveDuplicidadeParecer(l){
     normaliza(l.processoAno),
     normaliza(l.processoCodigo),
     l.categoriaParecer,
-    normaliza(l.tipoParecer)
+    normaliza(l.tipoParecer),
+    l.dataSolicitacao || ''
   ].join('|');
 }
 
@@ -2571,7 +2572,8 @@ function parecerJaExiste(linha){
   const chave = chaveDuplicidadeParecer(linha);
   return state.pareceres.some(p => chaveDuplicidadeParecer({
     processoAno: p.processoAno, processoCodigo: p.processoCodigo,
-    categoriaParecer: p.categoriaParecer, tipoParecer: p.tipoParecer
+    categoriaParecer: p.categoriaParecer, tipoParecer: p.tipoParecer,
+    dataSolicitacao: dataSolicitacaoOriginal(p)
   }) === chave);
 }
 
@@ -3288,8 +3290,8 @@ function abrirModalImportarPareceres(){
         ${novos.length>8 ? `<div class="muted">e mais ${novos.length-8}…</div>` : ''}
       </div>
       ${totalLinhas > parsed.length ? `<p class="field-hint">${totalLinhas-parsed.length} linha(s) ignorada(s) por falta de Ano, Código ou Data de solicitação.</p>` : ''}
-      ${duplicadasNaPlanilha ? `<p class="field-hint">${duplicadasNaPlanilha} linha(s) repetida(s) dentro da própria planilha (mesmo processo, categoria e tipo) — contadas só uma vez.</p>` : ''}
-      ${jaCadastrados.length ? `<p class="field-hint" style="color:var(--brass-dark);">${jaCadastrados.length} linha(s) já existem no site (mesmo processo + categoria + tipo) — <strong>não serão importadas de novo</strong>, pra não duplicar o que você já cadastrou manualmente.</p>` : ''}
+      ${duplicadasNaPlanilha ? `<p class="field-hint">${duplicadasNaPlanilha} linha(s) repetida(s) dentro da própria planilha (mesmo processo, categoria, tipo e data de solicitação) — contadas só uma vez.</p>` : ''}
+      ${jaCadastrados.length ? `<p class="field-hint" style="color:var(--brass-dark);">${jaCadastrados.length} linha(s) já existem no site (mesmo processo + categoria + tipo + data de solicitação) — <strong>não serão importadas de novo</strong>, pra não duplicar o que você já cadastrou manualmente. Relatórios diferentes do mesmo processo (ex: parcial do 1º e do 2º semestre) continuam sendo importados normalmente, já que têm datas de solicitação diferentes.</p>` : ''}
       ${semParecerista ? `<p class="field-hint">${semParecerista} linha(s) sem parecerista informado — serão importadas como "anuência do departamento" (sem indicação de pessoa).</p>` : ''}
       ${parceristaDesconhecido ? `<p class="field-hint" style="color:var(--brass-dark);">${parceristaDesconhecido} linha(s) citam um nº USP de parecerista que ainda não está cadastrado — serão importadas mesmo assim, mas o nome só aparece depois de cadastrar essa pessoa em "Pareceristas".</p>` : ''}
       ${novos.length ? `<button class="btn" id="confirmar-importacao-pareceres">Importar ${novos.length} parecer(es) novo(s)</button>` : `<p class="field-hint">Nada para importar — todas as linhas reconhecidas já estão cadastradas no site.</p>`}
