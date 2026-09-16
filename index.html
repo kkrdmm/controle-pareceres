@@ -1203,6 +1203,7 @@ function render(){
     document.getElementById('btn-email-template').onclick = abrirModalTemplate;
     document.getElementById('btn-declaracao').onclick = abrirModalDeclaracao;
     document.getElementById('btn-relatorio').onclick = abrirModalRelatorio;
+    document.getElementById('btn-importar-pareceres').onclick = abrirModalImportarPareceres;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
@@ -1331,6 +1332,7 @@ function paginaPareceres(lista){
       <button class="btn-ghost" id="btn-email-template">Modelo de e-mail</button>
       <button class="btn-ghost" id="btn-declaracao">Declarações</button>
       <button class="btn-ghost" id="btn-relatorio">Relatórios</button>
+      <button class="btn-ghost" id="btn-importar-pareceres">Importar pareceres</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
     <div class="filters" style="align-items:center;">
@@ -2485,6 +2487,106 @@ function abrirModalPareceristas(aviso){
   desenhar();
 }
 
+function normalizarCategoriaParecer(raw){
+  const n = normaliza(raw);
+  if(!n) return null;
+  if(n.includes('iniciacao') || n === 'ic' || n.includes('cientifica')) return 'iniciacao_cientifica';
+  if(n.includes('pos-doc') || n.includes('pos doc') || n.includes('posdoc') || n.includes('pos-doutor') || n.includes('pos doutor')) return 'pos_doutorado';
+  if(n.includes('colaborador academico') || n.includes('colaborador-academico') || n.includes('apoio a novos docentes') || n.includes('apoio novos docentes')) return 'colaborador_academico';
+  if(n.includes('pesquisador colaborador') || n.includes('pesq colaborador') || n.includes('pesq. colaborador')) return 'pesquisador_colaborador';
+  if(n.includes('outro')) return 'outros';
+  return null;
+}
+
+function converterDataPlanilha(valor){
+  if(!valor && valor !== 0) return '';
+  if(Object.prototype.toString.call(valor) === '[object Date]' && !isNaN(valor)){
+    const ano = valor.getFullYear(), mes = String(valor.getMonth()+1).padStart(2,'0'), dia = String(valor.getDate()).padStart(2,'0');
+    return `${ano}-${mes}-${dia}`;
+  }
+  if(typeof valor === 'number'){
+    // número de série do Excel (dias desde 30/12/1899)
+    const base = new Date(Date.UTC(1899,11,30));
+    const d = new Date(base.getTime() + valor * 86400000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,'0')}-${String(d.getUTCDate()).padStart(2,'0')}`;
+  }
+  const texto = String(valor).trim();
+  if(!texto) return '';
+  let m = texto.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/); // YYYY-MM-DD
+  if(m) return `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`;
+  m = texto.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/); // DD/MM/YYYY
+  if(m) return `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`;
+  return '';
+}
+
+function parseLinhaParecer(row){
+  const chaves = Object.keys(row);
+  const acha = (padroes) => {
+    const k = chaves.find(c => padroes.some(p => normaliza(c).includes(p)));
+    return k !== undefined ? row[k] : '';
+  };
+  const achaTexto = (padroes) => String(acha(padroes) ?? '').trim();
+
+  const ano = achaTexto(['ano']);
+  const codigo = achaTexto(['codigo']);
+  if(!ano || !codigo) return null;
+
+  const categoriaBruta = achaTexto(['categoria']);
+  const categoriaParecer = normalizarCategoriaParecer(categoriaBruta) || 'outros';
+  const categoriaParecerOutros = categoriaParecer === 'outros' ? categoriaBruta : '';
+  const tipoParecer = achaTexto(['tipo']);
+  const departamento = canonicalizarDepartamentoDigitado(achaTexto(['depart']));
+  const parceristaNUSP = achaTexto(['parecerista','usp do parecerista','nusp do parecerista']).replace(/\D/g,'');
+  const autorNUSP = achaTexto(['autor']).replace(/\D/g,'');
+  const dataSolicitacao = converterDataPlanilha(acha(['solicit']));
+  const dataConclusaoBruta = acha(['conclus','emiss']);
+  const dataConclusao = converterDataPlanilha(dataConclusaoBruta);
+
+  if(!dataSolicitacao) return null;
+
+  return {
+    processoAno: ano,
+    processoCodigo: codigo,
+    categoriaParecer,
+    categoriaParecerOutros,
+    tipoParecer,
+    departamento,
+    parceristaNUSP,
+    autorNUSP,
+    dataSolicitacao,
+    dataConclusao: dataConclusao || null
+  };
+}
+
+function importarLinhaParecer(linha){
+  const hoje = todayIso();
+  const atribuicoes = linha.parceristaNUSP ? [{ parceristaId: linha.parceristaNUSP, data: linha.dataSolicitacao }] : [];
+  const prazoFase1 = calcularPrazo(linha.dataSolicitacao, 14);
+  const novo = {
+    id: uid(),
+    numero: state.proximoNumero,
+    processoAno: linha.processoAno,
+    processoCodigo: linha.processoCodigo,
+    autorNUSP: linha.autorNUSP,
+    categoriaParecer: linha.categoriaParecer,
+    categoriaParecerOutros: linha.categoriaParecerOutros,
+    tipoParecer: linha.tipoParecer,
+    avaliadoPelaComissao: false,
+    departamento: linha.departamento,
+    atribuicoes,
+    dataSolicitacaoAtual: linha.dataSolicitacao,
+    faseAtual: 1,
+    prazoFase1,
+    prazoFase2: null,
+    emailEnviadoFase1: false,
+    dataConclusao: linha.dataConclusao || null,
+    historicoDecisoes: []
+  };
+  state.pareceres.push(novo);
+  state.proximoNumero += 1;
+  return novo;
+}
+
 function normalizarCategoriaParecerista(raw){
   const n = normaliza(raw);
   if(!n) return '';
@@ -3091,6 +3193,87 @@ ${comIncidente.length} de ${filtrados.length} parecer(es) (${taxaIncidente.toFix
   };
 }
 
+
+/* ---------- Importação de pareceres em massa ---------- */
+
+function abrirModalImportarPareceres(){
+  const overlay = criarOverlay();
+  const desenhar = () => {
+    overlay.innerHTML = `
+      <div class="modal modal-wide">
+        <h2>Importar pareceres</h2>
+        <p class="field-hint" style="margin-bottom:0.8rem;">
+          Use para cadastrar de uma vez registros antigos, sem digitar um por um. A planilha deve ter colunas com: <strong>Ano</strong>, <strong>Código</strong>, <strong>Categoria</strong>, <strong>Tipo</strong>, <strong>Departamento</strong>, <strong>Parecerista (nº USP)</strong>, <strong>Autor avaliado (nº USP)</strong> (opcional), <strong>Data de solicitação</strong> e <strong>Data de conclusão</strong> (deixe em branco se ainda estiver em aberto). A ordem das colunas não importa.
+        </p>
+        <p class="field-hint" style="margin-bottom:0.8rem;">Categoria aceita variações como "Iniciação científica", "Pós-doutorado", "Pesquisador colaborador", "Apoio a Novos Docentes" ou "Outros". O nº USP do parecerista precisa já estar cadastrado em "Pareceristas" para o nome aparecer certo (linhas com nº USP desconhecido ainda são importadas, só ficam sem nome até você cadastrar essa pessoa).</p>
+        <div class="field"><input id="f-arquivo-pareceres" type="file" accept=".xlsx,.xls,.csv"></div>
+        <div id="importar-pareceres-preview"></div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="fechar-importar-pareceres">Fechar</button>
+        </div>
+      </div>
+    `;
+    document.getElementById('fechar-importar-pareceres').onclick = () => { fecharOverlay(); render(); };
+    document.getElementById('f-arquivo-pareceres').onchange = (e) => {
+      const file = e.target.files[0];
+      if(!file) return;
+      const box = document.getElementById('importar-pareceres-preview');
+      if(typeof XLSX === 'undefined'){
+        box.innerHTML = `<p class="field-error">Não foi possível carregar a biblioteca de leitura de planilhas (a rede pode estar bloqueando recursos externos). Verifique sua conexão e recarregue a página.</p>`;
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        try{
+          const data = new Uint8Array(ev.target.result);
+          const wb = XLSX.read(data, { type:'array', cellDates:true });
+          const sheet = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(sheet, { defval:'' });
+          const parsed = rows.map(r => parseLinhaParecer(r)).filter(Boolean);
+          mostrarPreviewImportacaoPareceres(parsed, rows.length);
+        }catch(err){
+          box.innerHTML = `<p class="field-error">Não foi possível ler o arquivo. Verifique se é um .xlsx, .xls ou .csv válido.</p>`;
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    };
+  };
+
+  const mostrarPreviewImportacaoPareceres = (parsed, totalLinhas) => {
+    const box = document.getElementById('importar-pareceres-preview');
+    if(parsed.length === 0){
+      box.innerHTML = `<p class="field-error">Nenhuma linha reconhecida. Confira se a planilha tem colunas de Ano, Código e Data de solicitação preenchidas, com os cabeçalhos esperados.</p>`;
+      return;
+    }
+    const semParecerista = parsed.filter(l=>!l.parceristaNUSP).length;
+    const parceristaDesconhecido = parsed.filter(l=> l.parceristaNUSP && !state.pareceristas.some(p=>p.id===l.parceristaNUSP)).length;
+    box.innerHTML = `
+      <div class="import-preview">
+        <strong>${parsed.length} de ${totalLinhas} linha(s) reconhecida(s):</strong>
+        ${parsed.slice(0,8).map(l=>`<div>${escapeHtml(l.processoAno)}/${escapeHtml(l.processoCodigo)} — ${escapeHtml(labelCategoriaId(l.categoriaParecer))}${l.tipoParecer?' · '+escapeHtml(l.tipoParecer):''} — ${l.parceristaNUSP ? (nomeParecerista(l.parceristaNUSP)!=='—' ? escapeHtml(nomeParecerista(l.parceristaNUSP)) : 'nº USP '+escapeHtml(l.parceristaNUSP)+' (não cadastrado)') : 'sem parecerista'} — ${l.dataConclusao ? 'concluído' : 'em aberto'}</div>`).join('')}
+        ${parsed.length>8 ? `<div class="muted">e mais ${parsed.length-8}…</div>` : ''}
+      </div>
+      ${totalLinhas > parsed.length ? `<p class="field-hint">${totalLinhas-parsed.length} linha(s) ignorada(s) por falta de Ano, Código ou Data de solicitação.</p>` : ''}
+      ${semParecerista ? `<p class="field-hint">${semParecerista} linha(s) sem parecerista informado — serão importadas como "anuência do departamento" (sem indicação de pessoa).</p>` : ''}
+      ${parceristaDesconhecido ? `<p class="field-hint" style="color:var(--brass-dark);">${parceristaDesconhecido} linha(s) citam um nº USP de parecerista que ainda não está cadastrado — serão importadas mesmo assim, mas o nome só aparece depois de cadastrar essa pessoa em "Pareceristas".</p>` : ''}
+      <button class="btn" id="confirmar-importacao-pareceres">Importar ${parsed.length} parecer(es)</button>
+    `;
+    document.getElementById('confirmar-importacao-pareceres').onclick = () => {
+      parsed.forEach(linha => importarLinhaParecer(linha));
+      saveState();
+      flashMsg = `Importação concluída: ${parsed.length} parecer(es) adicionado(s).`;
+      fecharOverlay();
+      render();
+    };
+  };
+
+  desenhar();
+}
+
+function labelCategoriaId(id){
+  const c = CATEGORIAS_PARECER.find(x=>x.id===id);
+  return c ? c.label : id;
+}
 
 function abrirModalDeclaracao(){
   const overlay = criarOverlay();
