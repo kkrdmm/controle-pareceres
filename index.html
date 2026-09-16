@@ -751,10 +751,18 @@ function padronizarGrafiaDepartamentosExistentes(){
   return alterados;
 }
 
+function primeiroDiaUtilAposPrazo(prazo){
+  return proximoDiaUtil(addDays(prazo, 1));
+}
+
+function prazoRealmenteVencido(prazo){
+  return todayIso() >= primeiroDiaUtilAposPrazo(prazo);
+}
+
 function statusParecer(p){
   if(p.dataConclusao) return 'concluido';
   const prazoAtivo = p.faseAtual === 1 ? p.prazoFase1 : p.prazoFase2;
-  return diffDays(prazoAtivo) < 0 ? 'atrasado' : 'em_dia';
+  return prazoRealmenteVencido(prazoAtivo) ? 'atrasado' : 'em_dia';
 }
 
 /* ---------- Alertas derivados ---------- */
@@ -763,9 +771,9 @@ function alertasPendentes(){
   const alertas = [];
   state.pareceres.forEach(p=>{
     if(p.dataConclusao) return;
-    if(p.faseAtual === 1 && diffDays(p.prazoFase1) < 0){
+    if(p.faseAtual === 1 && prazoRealmenteVencido(p.prazoFase1)){
       alertas.push({ tipo:'fase1', parecer:p });
-    } else if(p.faseAtual === 2 && diffDays(p.prazoFase2) < 0){
+    } else if(p.faseAtual === 2 && prazoRealmenteVencido(p.prazoFase2)){
       alertas.push({ tipo:'fase2', parecer:p });
     }
   });
