@@ -3104,13 +3104,65 @@ function abrirModalConflitos(){
 
 /* ---------- Relatórios ---------- */
 
+function statsPareceres(lista, benchmarkDias){
+  const concluidos = lista.filter(p=>p.dataConclusao);
+  const diasDe = p => diasEntre(dataSolicitacaoOriginal(p), p.dataConclusao);
+  const mediaDias = concluidos.length ? concluidos.reduce((s,p)=>s+diasDe(p),0) / concluidos.length : null;
+  const dentroPrazo = concluidos.filter(p=>diasDe(p) <= benchmarkDias).length;
+  const pctDentroPrazo = concluidos.length ? (dentroPrazo/concluidos.length*100) : null;
+  let maisRapido = null, maisLento = null;
+  concluidos.forEach(p=>{
+    const d = diasDe(p);
+    if(maisRapido===null || d<diasDe(maisRapido)) maisRapido = p;
+    if(maisLento===null || d>diasDe(maisLento)) maisLento = p;
+  });
+  const porTipo = {};
+  lista.forEach(p=>{ const chave = p.tipoParecer || '(sem tipo)'; porTipo[chave] = (porTipo[chave]||0)+1; });
+  return { total: lista.length, concluidos: concluidos.length, mediaDias, pctDentroPrazo, dentroPrazo, maisRapido, maisLento, diasDe, porTipo };
+}
+
+function cardsResumoRelatorio(stats, benchmarkDias){
+  const corPct = stats.pctDentroPrazo === null ? '' : (stats.pctDentroPrazo >= 70 ? 'green' : (stats.pctDentroPrazo < 40 ? 'red' : ''));
+  return `
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:0.7rem;margin-bottom:1rem;">
+      <div class="metric-card"><div class="num">${stats.total}</div><div class="lbl">Solicitados</div></div>
+      <div class="metric-card"><div class="num">${stats.concluidos}</div><div class="lbl">Concluídos</div></div>
+      <div class="metric-card ${corPct}"><div class="num">${stats.pctDentroPrazo!==null ? stats.pctDentroPrazo.toFixed(0)+'%' : '—'}</div><div class="lbl">Dentro do prazo (${benchmarkDias}d)</div></div>
+      <div class="metric-card"><div class="num">${stats.mediaDias!==null ? stats.mediaDias.toFixed(1) : '—'}</div><div class="lbl">Média de dias (esperado ${benchmarkDias})</div></div>
+    </div>
+  `;
+}
+
+function extremosRelatorio(stats){
+  if(!stats.maisRapido && !stats.maisLento) return `<p class="field-hint">Sem pareceres concluídos nesse recorte para calcular extremos.</p>`;
+  return `
+    <div class="field-row" style="margin-bottom:0.8rem;">
+      ${stats.maisRapido ? `<div class="field" style="margin-bottom:0;"><label>Mais rápido</label><input type="text" disabled value="nº ${pad(stats.maisRapido.numero)} — ${numeroProcesso(stats.maisRapido)} — ${stats.diasDe(stats.maisRapido)} dia(s)"></div>` : ''}
+      ${stats.maisLento ? `<div class="field" style="margin-bottom:0;"><label>Mais lento</label><input type="text" disabled value="nº ${pad(stats.maisLento.numero)} — ${numeroProcesso(stats.maisLento)} — ${stats.diasDe(stats.maisLento)} dia(s)"></div>` : ''}
+    </div>
+  `;
+}
+
+function tabelaTiposRelatorio(stats){
+  const chaves = Object.keys(stats.porTipo).sort((a,b)=>a.localeCompare(b,'pt-BR'));
+  if(!chaves.length) return '';
+  return `
+    <div class="rank-table-wrap">
+      <table class="rank-table">
+        <thead><tr><th>Tipo</th><th>Quantidade</th></tr></thead>
+        <tbody>${chaves.map(k=>`<tr><td>${escapeHtml(k)}</td><td>${stats.porTipo[k]}</td></tr>`).join('')}</tbody>
+      </table>
+    </div>
+  `;
+}
+
 function abrirModalRelatorio(){
   const overlay = criarOverlay();
   const departamentos = departamentosConhecidos();
   overlay.innerHTML = `
     <div class="modal modal-wide">
       <h2>Gerar relatório</h2>
-      <p class="field-hint" style="margin-bottom:1rem;">Estatísticas dos pareceres solicitados num período — quantidade por categoria/tipo, tempo médio de emissão, extremos, departamentos e pareceristas em destaque.</p>
+      <p class="field-hint" style="margin-bottom:1rem;">Estatísticas dos pareceres solicitados num período, com comparação entre o prazo esperado (21 dias) e o tempo realmente levado, geral e por categoria.</p>
       <div class="field-row">
         <div class="field"><label for="f-rel-inicio">Período — de</label><input id="f-rel-inicio" type="date" max="${todayIso()}"></div>
         <div class="field"><label for="f-rel-fim">até</label><input id="f-rel-fim" type="date" max="${todayIso()}"></div>
@@ -3145,7 +3197,7 @@ function abrirModalRelatorio(){
           </div>
         </div>
       </div>
-      <p class="field-hint">O período considera a data em que cada parecer foi solicitado originalmente (mesmo que tenha sido reatribuído depois).</p>
+      <p class="field-hint">O período considera a data em que cada parecer foi solicitado originalmente (mesmo que tenha sido reatribuído depois). O prazo esperado usado nas comparações é de 21 dias corridos (1ª fase + prorrogação).</p>
       <div class="modal-actions" style="justify-content:flex-start;">
         <button class="btn-ghost btn-sm" id="gerar-relatorio">Gerar relatório</button>
       </div>
@@ -3161,6 +3213,7 @@ function abrirModalRelatorio(){
   document.getElementById('rel-depto-todos').onclick = () => document.querySelectorAll('.rel-depto-check').forEach(el=>el.checked=true);
   document.getElementById('rel-depto-nenhum').onclick = () => document.querySelectorAll('.rel-depto-check').forEach(el=>el.checked=false);
   document.getElementById('gerar-relatorio').onclick = () => {
+    const BENCHMARK_DIAS = 21;
     const inicio = document.getElementById('f-rel-inicio').value;
     const fim = document.getElementById('f-rel-fim').value;
     const categoriasMarcadas = Array.from(document.querySelectorAll('.rel-cat-check:checked')).map(el=>el.value);
@@ -3184,44 +3237,18 @@ function abrirModalRelatorio(){
       return;
     }
 
-    // 1) Quantidade por categoria e tipo
-    const porCategoriaTipo = {};
-    filtrados.forEach(p=>{
-      const chave = labelCategoria(p) + (p.tipoParecer ? ' — ' + p.tipoParecer : '');
-      porCategoriaTipo[chave] = (porCategoriaTipo[chave]||0) + 1;
-    });
+    const statsGeral = statsPareceres(filtrados, BENCHMARK_DIAS);
+    const statsPorCategoria = CATEGORIAS_PARECER
+      .filter(c=>categoriasMarcadas.includes(c.id))
+      .map(c=>({ id:c.id, label:c.label, lista: filtrados.filter(p=>p.categoriaParecer===c.id) }))
+      .filter(x=>x.lista.length)
+      .map(x=>({ ...x, stats: statsPareceres(x.lista, BENCHMARK_DIAS) }));
 
-    // 2) Tempo médio de emissão (só concluídos), geral + por categoria + por departamento
-    const concluidos = filtrados.filter(p=>p.dataConclusao);
-    const diasDe = p => diasEntre(dataSolicitacaoOriginal(p), p.dataConclusao);
-    const mediaGeral = concluidos.length ? (concluidos.reduce((s,p)=>s+diasDe(p),0) / concluidos.length) : null;
-
-    const mediaPorGrupo = (chaveFn) => {
-      const grupos = {};
-      concluidos.forEach(p=>{
-        const chave = chaveFn(p);
-        grupos[chave] = grupos[chave] || { soma:0, n:0 };
-        grupos[chave].soma += diasDe(p);
-        grupos[chave].n++;
-      });
-      return Object.keys(grupos).map(k=>({ nome:k, media: grupos[k].soma/grupos[k].n, n: grupos[k].n })).sort((a,b)=>a.media-b.media);
-    };
-    const mediaPorCategoria = mediaPorGrupo(p=>labelCategoria(p));
-    const mediaPorDepto = mediaPorGrupo(p=>p.departamento || 'Não informado');
-
-    // 3) Mais rápido e mais lento
-    let maisRapido = null, maisLento = null;
-    concluidos.forEach(p=>{
-      const dias = diasDe(p);
-      if(maisRapido === null || dias < diasDe(maisRapido)) maisRapido = p;
-      if(maisLento === null || dias > diasDe(maisLento)) maisLento = p;
-    });
-
-    // 4) Departamento que mais solicita x mais emite
+    // Departamento que mais solicita x mais emite (geral)
     const porDeptoSolicitado = {};
     filtrados.forEach(p=>{ const d = p.departamento || 'Não informado'; porDeptoSolicitado[d] = (porDeptoSolicitado[d]||0)+1; });
     const porDeptoEmitido = {};
-    concluidos.forEach(p=>{
+    statsGeral.concluidos && filtrados.filter(p=>p.dataConclusao).forEach(p=>{
       const parecerista = state.pareceristas.find(x=>x.id===parceristaAtualId(p));
       const d = (parecerista && parecerista.departamento) || p.departamento || 'Não informado';
       porDeptoEmitido[d] = (porDeptoEmitido[d]||0)+1;
@@ -3229,16 +3256,16 @@ function abrirModalRelatorio(){
     const topDeptoSolicitado = Object.entries(porDeptoSolicitado).sort((a,b)=>b[1]-a[1])[0];
     const topDeptoEmitido = Object.entries(porDeptoEmitido).sort((a,b)=>b[1]-a[1])[0];
 
-    // 5) Parecerista que mais emitiu
+    // Parecerista que mais emitiu (geral)
     const porParecerista = {};
-    concluidos.forEach(p=>{
+    filtrados.filter(p=>p.dataConclusao).forEach(p=>{
       const id = parceristaAtualId(p);
       if(!id) return;
       porParecerista[id] = (porParecerista[id]||0)+1;
     });
     const topParecerista = Object.entries(porParecerista).sort((a,b)=>b[1]-a[1])[0];
 
-    // 6) Taxa de perda de prazo / declínio
+    // Taxa de incidentes (geral)
     const comIncidente = filtrados.filter(p=>p.historicoDecisoes.some(h=>h.resultado==='nao_emitido'));
     const taxaIncidente = (comIncidente.length / filtrados.length) * 100;
 
@@ -3249,41 +3276,61 @@ function abrirModalRelatorio(){
       ? 'Todos'
       : departamentosMarcados.join(', ');
 
-    const textoRelatorio =
+    resultadoEl.innerHTML = `
+      <div class="field-hint" style="margin:1rem 0;">Período: ${fmtDate(inicio)} a ${fmtDate(fim)} · Categoria: ${escapeHtml(nomesCategorias)} · Departamento: ${escapeHtml(nomesDepartamentos)}</div>
+
+      <h3 style="margin-bottom:0.6rem;">Visão geral</h3>
+      ${cardsResumoRelatorio(statsGeral, BENCHMARK_DIAS)}
+      <div class="chart-card" style="margin-bottom:1.2rem;">
+        <h3 style="margin-bottom:0.2rem;">Prazo esperado (${BENCHMARK_DIAS}d) x tempo médio real, por categoria</h3>
+        <div style="height:${Math.max(220, (statsPorCategoria.length+1)*46)}px;"><canvas id="chart-relatorio-prazo"></canvas></div>
+      </div>
+      ${extremosRelatorio(statsGeral)}
+      <div class="field-row" style="margin-bottom:1.2rem;">
+        <div class="field" style="margin-bottom:0;"><label>Departamento que mais solicita</label><input type="text" disabled value="${topDeptoSolicitado ? `${topDeptoSolicitado[0]} (${topDeptoSolicitado[1]})` : '—'}"></div>
+        <div class="field" style="margin-bottom:0;"><label>Departamento que mais emite</label><input type="text" disabled value="${topDeptoEmitido ? `${topDeptoEmitido[0]} (${topDeptoEmitido[1]})` : '—'}"></div>
+      </div>
+      <div class="field-row" style="margin-bottom:1.5rem;">
+        <div class="field" style="margin-bottom:0;"><label>Parecerista que mais emitiu</label><input type="text" disabled value="${topParecerista ? `${nomeParecerista(topParecerista[0])} (${topParecerista[1]})` : '—'}"></div>
+        <div class="field" style="margin-bottom:0;"><label>Taxa de cobrança/troca de parecerista</label><input type="text" disabled value="${comIncidente.length} de ${filtrados.length} (${taxaIncidente.toFixed(1)}%)"></div>
+      </div>
+
+      ${statsPorCategoria.map(x=>`
+        <h3 style="margin-bottom:0.6rem;border-top:1px solid var(--line);padding-top:1.2rem;">${escapeHtml(x.label)}</h3>
+        ${cardsResumoRelatorio(x.stats, BENCHMARK_DIAS)}
+        ${extremosRelatorio(x.stats)}
+        ${tabelaTiposRelatorio(x.stats)}
+      `).join('')}
+
+      <div class="field" style="margin-top:1.5rem;">
+        <label>Versão em texto (para copiar e colar)</label>
+        <textarea id="f-texto-relatorio" rows="14" style="font-family:'IBM Plex Mono', monospace; font-size:0.78rem;">${escapeHtml(
 `RELATÓRIO DE PARECERES
 
 Período: ${fmtDate(inicio)} a ${fmtDate(fim)}
 Filtros: Categoria: ${nomesCategorias} | Departamento: ${nomesDepartamentos}
+Prazo esperado usado na comparação: ${BENCHMARK_DIAS} dias corridos
 
-Total de pareceres solicitados no período: ${filtrados.length}
-Total concluídos: ${concluidos.length}
+VISÃO GERAL
+Solicitados: ${statsGeral.total} | Concluídos: ${statsGeral.concluidos}
+Dentro do prazo esperado: ${statsGeral.pctDentroPrazo!==null ? statsGeral.pctDentroPrazo.toFixed(1)+'%' : '—'}
+Tempo médio: ${statsGeral.mediaDias!==null ? statsGeral.mediaDias.toFixed(1)+' dias' : '—'} (esperado ${BENCHMARK_DIAS})
+${statsGeral.maisRapido ? `Mais rápido: nº ${pad(statsGeral.maisRapido.numero)} — ${numeroProcesso(statsGeral.maisRapido)} — ${statsGeral.diasDe(statsGeral.maisRapido)} dia(s)` : ''}
+${statsGeral.maisLento ? `Mais lento: nº ${pad(statsGeral.maisLento.numero)} — ${numeroProcesso(statsGeral.maisLento)} — ${statsGeral.diasDe(statsGeral.maisLento)} dia(s)` : ''}
+Departamento que mais solicita: ${topDeptoSolicitado ? `${topDeptoSolicitado[0]} (${topDeptoSolicitado[1]})` : '—'}
+Departamento que mais emite: ${topDeptoEmitido ? `${topDeptoEmitido[0]} (${topDeptoEmitido[1]})` : '—'}
+Parecerista que mais emitiu: ${topParecerista ? `${nomeParecerista(topParecerista[0])} (${topParecerista[1]})` : '—'}
+Taxa de cobrança/troca de parecerista: ${comIncidente.length} de ${filtrados.length} (${taxaIncidente.toFixed(1)}%)
 
-QUANTIDADE POR CATEGORIA E TIPO
-${Object.keys(porCategoriaTipo).sort((a,b)=>a.localeCompare(b,'pt-BR')).map(k=>`- ${k}: ${porCategoriaTipo[k]}`).join('\n')}
-
-TEMPO MÉDIO DE EMISSÃO (dias corridos, desde a solicitação original)
-${mediaGeral !== null ? `Geral: ${mediaGeral.toFixed(1)} dias (${concluidos.length} parecer(es) concluído(s))` : 'Sem pareceres concluídos no período para calcular.'}
-${mediaPorCategoria.length ? `\nPor categoria:\n${mediaPorCategoria.map(g=>`- ${g.nome}: ${g.media.toFixed(1)} dias (${g.n})`).join('\n')}` : ''}
-${mediaPorDepto.length ? `\nPor departamento:\n${mediaPorDepto.map(g=>`- ${g.nome}: ${g.media.toFixed(1)} dias (${g.n})`).join('\n')}` : ''}
-
-MAIS RÁPIDO E MAIS LENTO
-${maisRapido ? `Mais rápido: nº ${pad(maisRapido.numero)} — processo ${numeroProcesso(maisRapido)} — ${escapeHtml(descricaoResponsavel(maisRapido))} — ${diasDe(maisRapido)} dia(s)` : 'Sem dados suficientes.'}
-${maisLento ? `Mais lento: nº ${pad(maisLento.numero)} — processo ${numeroProcesso(maisLento)} — ${escapeHtml(descricaoResponsavel(maisLento))} — ${diasDe(maisLento)} dia(s)` : ''}
-
-DEPARTAMENTO QUE MAIS SOLICITA E MAIS EMITE
-${topDeptoSolicitado ? `Mais solicita: ${topDeptoSolicitado[0]} (${topDeptoSolicitado[1]} parecer(es))` : '—'}
-${topDeptoEmitido ? `Mais emite: ${topDeptoEmitido[0]} (${topDeptoEmitido[1]} parecer(es) concluído(s))` : '—'}
-
-PARECERISTA QUE MAIS EMITIU
-${topParecerista ? `${escapeHtml(nomeParecerista(topParecerista[0]))} — ${topParecerista[1]} parecer(es)` : 'Sem dados suficientes.'}
-
-TAXA DE PERDA DE PRAZO / DECLÍNIO
-${comIncidente.length} de ${filtrados.length} parecer(es) (${taxaIncidente.toFixed(1)}%) precisaram de cobrança ou troca de parecerista.`;
-
-    resultadoEl.innerHTML = `
-      <div class="field">
-        <label>Texto do relatório</label>
-        <textarea id="f-texto-relatorio" rows="20" style="font-family:'IBM Plex Mono', monospace; font-size:0.78rem;">${escapeHtml(textoRelatorio)}</textarea>
+${statsPorCategoria.map(x=>
+`${x.label.toUpperCase()}
+Solicitados: ${x.stats.total} | Concluídos: ${x.stats.concluidos}
+Dentro do prazo esperado: ${x.stats.pctDentroPrazo!==null ? x.stats.pctDentroPrazo.toFixed(1)+'%' : '—'}
+Tempo médio: ${x.stats.mediaDias!==null ? x.stats.mediaDias.toFixed(1)+' dias' : '—'} (esperado ${BENCHMARK_DIAS})
+${x.stats.maisRapido ? `Mais rápido: nº ${pad(x.stats.maisRapido.numero)} — ${numeroProcesso(x.stats.maisRapido)} — ${x.stats.diasDe(x.stats.maisRapido)} dia(s)` : ''}
+${x.stats.maisLento ? `Mais lento: nº ${pad(x.stats.maisLento.numero)} — ${numeroProcesso(x.stats.maisLento)} — ${x.stats.diasDe(x.stats.maisLento)} dia(s)` : ''}
+`).join('\n')}`
+        )}</textarea>
         <div style="display:flex;justify-content:flex-end;margin-top:0.4rem;">
           <button type="button" class="btn-ghost btn-sm" data-copiar="f-texto-relatorio" data-status="status-relatorio">Copiar relatório</button>
         </div>
@@ -3291,6 +3338,30 @@ ${comIncidente.length} de ${filtrados.length} parecer(es) (${taxaIncidente.toFix
       </div>
     `;
     ligarBotoesCopiar(overlay);
+
+    if(graficosDisponiveis()){
+      const ctxRel = document.getElementById('chart-relatorio-prazo');
+      if(ctxRel){
+        const labels = ['Geral', ...statsPorCategoria.map(x=>x.label)];
+        const todasStats = [statsGeral, ...statsPorCategoria.map(x=>x.stats)];
+        new Chart(ctxRel, {
+          type:'bar',
+          data:{
+            labels,
+            datasets:[
+              { label:`Esperado (${BENCHMARK_DIAS}d)`, data: labels.map(()=>BENCHMARK_DIAS), backgroundColor:'#B7AA8C' },
+              { label:'Tempo médio real', data: todasStats.map(s=>s.mediaDias!==null ? Number(s.mediaDias.toFixed(1)) : 0), backgroundColor:'#1C2B45' }
+            ]
+          },
+          options:{
+            indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{ padding:{ right:24 } },
+            plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } },
+            scales:{ x:{ beginAtZero:true, title:{ display:true, text:'dias corridos' } } }
+          },
+          plugins:[pluginRotulosBarras()]
+        });
+      }
+    }
   };
 }
 
