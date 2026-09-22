@@ -3156,6 +3156,18 @@ function tabelaTiposRelatorio(stats){
   `;
 }
 
+function statsPorTipoRelatorio(lista, benchmarkDias){
+  const grupos = {};
+  lista.forEach(p=>{
+    const tipo = p.tipoParecer || '(sem tipo)';
+    grupos[tipo] = grupos[tipo] || [];
+    grupos[tipo].push(p);
+  });
+  return Object.keys(grupos)
+    .sort((a,b)=>a.localeCompare(b,'pt-BR'))
+    .map(tipo => ({ tipo, stats: statsPareceres(grupos[tipo], benchmarkDias) }));
+}
+
 function abrirModalRelatorio(){
   const overlay = criarOverlay();
   const departamentos = departamentosConhecidos();
@@ -3242,7 +3254,7 @@ function abrirModalRelatorio(){
       .filter(c=>categoriasMarcadas.includes(c.id))
       .map(c=>({ id:c.id, label:c.label, lista: filtrados.filter(p=>p.categoriaParecer===c.id) }))
       .filter(x=>x.lista.length)
-      .map(x=>({ ...x, stats: statsPareceres(x.lista, BENCHMARK_DIAS) }));
+      .map(x=>({ ...x, stats: statsPareceres(x.lista, BENCHMARK_DIAS), porTipo: statsPorTipoRelatorio(x.lista, BENCHMARK_DIAS) }));
 
     // Departamento que mais solicita x mais emite (geral)
     const porDeptoSolicitado = {};
@@ -3299,7 +3311,12 @@ function abrirModalRelatorio(){
         <h3 style="margin-bottom:0.6rem;border-top:1px solid var(--line);padding-top:1.2rem;">${escapeHtml(x.label)}</h3>
         ${cardsResumoRelatorio(x.stats, BENCHMARK_DIAS)}
         ${extremosRelatorio(x.stats)}
-        ${tabelaTiposRelatorio(x.stats)}
+        ${x.porTipo.length ? `
+          <div class="chart-card" style="margin-bottom:1.2rem;">
+            <h3 style="margin-bottom:0.2rem;">Prazo esperado (${BENCHMARK_DIAS}d) x tempo médio real, por tipo de parecer</h3>
+            <div style="height:${Math.max(180, x.porTipo.length*46)}px;"><canvas id="chart-relatorio-tipo-${x.id}"></canvas></div>
+          </div>
+        ` : ''}
       `).join('')}
 
       <div class="field" style="margin-top:1.5rem;">
@@ -3361,6 +3378,29 @@ ${x.stats.maisLento ? `Mais lento: nº ${pad(x.stats.maisLento.numero)} — ${nu
           plugins:[pluginRotulosBarras()]
         });
       }
+
+      statsPorCategoria.forEach(x=>{
+        if(!x.porTipo.length) return;
+        const ctxTipo = document.getElementById(`chart-relatorio-tipo-${x.id}`);
+        if(!ctxTipo) return;
+        const labelsTipo = x.porTipo.map(t=>t.tipo);
+        new Chart(ctxTipo, {
+          type:'bar',
+          data:{
+            labels: labelsTipo,
+            datasets:[
+              { label:`Esperado (${BENCHMARK_DIAS}d)`, data: labelsTipo.map(()=>BENCHMARK_DIAS), backgroundColor:'#B7AA8C' },
+              { label:'Tempo médio real', data: x.porTipo.map(t=>t.stats.mediaDias!==null ? Number(t.stats.mediaDias.toFixed(1)) : 0), backgroundColor:'#A9752E' }
+            ]
+          },
+          options:{
+            indexAxis:'y', responsive:true, maintainAspectRatio:false, layout:{ padding:{ right:24 } },
+            plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } },
+            scales:{ x:{ beginAtZero:true, title:{ display:true, text:'dias corridos' } } }
+          },
+          plugins:[pluginRotulosBarras()]
+        });
+      });
     }
   };
 }
