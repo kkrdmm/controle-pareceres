@@ -856,25 +856,10 @@ function abrirModalFase2Nao(parecerId, motivo){
   const excluidosParaSugestao = jaTentados.slice();
   if(p.autorNUSP) excluidosParaSugestao.push(p.autorNUSP, ...conflitantesAutor);
   const exigeComissao = jaTentados.length >= 2 && !TIPOS_SEM_PARECERISTA.includes(p.tipoParecer);
-  const sugestao = sugerirParecerista(p.departamento, excluidosParaSugestao, exigeComissao);
 
   const overlay = criarOverlay();
   const grupo = grupoDoDepartamento(p.departamento);
-  const opcoes = () => {
-    let ativos = parceristasAtivos().filter(x=> x.id !== p.autorNUSP && !conflitantesAutor.includes(x.id));
-    if(exigeComissao) ativos = ativos.filter(x=>x.comissaoPesquisa);
-    if(ativos.length === 0) return null;
-    return ativos.map(x=>{
-      let tag = '';
-      const mesmoDepto = normaliza(x.departamento)===normaliza(p.departamento);
-      if(sugestao && x.id===sugestao.id) tag = ' — sugerido';
-      else if(jaTentados.includes(x.id)) tag = ' — já atribuído anteriormente neste parecer';
-      else if(mesmoDepto) tag = ' — mesmo departamento';
-      else if(grupo && grupo.some(d=>normaliza(d)===normaliza(x.departamento))) tag = ' — departamento relacionado';
-      return `<option value="${x.id}" ${sugestao && x.id===sugestao.id ? 'selected':''}>${escapeHtml(x.nome)}${tag}</option>`;
-    }).join('');
-  };
-  const listaOpcoes = opcoes();
+  let sugestaoOffset = 0;
 
   const textoMotivo = motivo === 'declinado_justificado'
     ? `${escapeHtml(nomeParecerista(parceristaAnteriorId))} comunicou que não poderá emitir este parecer.`
@@ -892,72 +877,100 @@ function abrirModalFase2Nao(parecerId, motivo){
     ${p.autorNUSP ? `<div class="field" style="margin-bottom:0.6rem;"><label>Nº USP do autor avaliado</label><input type="text" value="${escapeHtml(p.autorNUSP)}" disabled></div>` : ''}
   `;
 
-  overlay.innerHTML = `
-    <div class="modal">
-      <h2>${motivo === 'declinado_justificado' ? 'Parecerista declinou — escolher novo' : 'Trocar parecerista'}</h2>
-      <p class="field-hint" style="margin-bottom:1rem;">${textoMotivo}</p>
-      ${resumoProcesso}
-      <p class="field-hint" style="margin-bottom:1rem;">
-        ${sugestao ? `Sugestão automática: <strong>${escapeHtml(sugestao.nome)}</strong> — mas você pode escolher outro nome abaixo.` : 'Não há sugestão automática disponível; escolha manualmente.'}
-      </p>
-      ${exigeComissao ? `<p class="field-hint" style="color:var(--brass-dark);margin-bottom:1rem;">Este processo já passou por 2 pareceristas sem retorno. A partir de agora, só membros da <strong>comissão de pesquisa</strong> podem ser indicados.</p>` : ''}
-      ${listaOpcoes ? `
-        <div class="field">
-          <label for="f-novo-parecerista-fase2">Novo parecerista</label>
-          <select id="f-novo-parecerista-fase2">${listaOpcoes}</select>
-          <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
-            <input id="f-parecerista-fase2-usp" type="text" readonly style="flex:1;background:var(--paper-raised);">
-            <button type="button" class="btn-ghost btn-sm" id="copiar-usp-fase2">Copiar nº USP</button>
+  const desenhar = () => {
+    const sugestao = sugerirParecerista(p.departamento, excluidosParaSugestao, exigeComissao, sugestaoOffset);
+    const opcoes = () => {
+      let ativos = parceristasAtivos().filter(x=> x.id !== p.autorNUSP && !conflitantesAutor.includes(x.id));
+      if(exigeComissao) ativos = ativos.filter(x=>x.comissaoPesquisa);
+      if(ativos.length === 0) return null;
+      return ativos.map(x=>{
+        let tag = '';
+        const mesmoDepto = normaliza(x.departamento)===normaliza(p.departamento);
+        if(sugestao && x.id===sugestao.id) tag = ' — sugerido';
+        else if(jaTentados.includes(x.id)) tag = ' — já atribuído anteriormente neste parecer';
+        else if(mesmoDepto) tag = ' — mesmo departamento';
+        else if(grupo && grupo.some(d=>normaliza(d)===normaliza(x.departamento))) tag = ' — departamento relacionado';
+        return `<option value="${x.id}" ${sugestao && x.id===sugestao.id ? 'selected':''}>${escapeHtml(x.nome)}${tag}</option>`;
+      }).join('');
+    };
+    const listaOpcoes = opcoes();
+
+    overlay.innerHTML = `
+      <div class="modal">
+        <h2>${motivo === 'declinado_justificado' ? 'Parecerista declinou — escolher novo' : 'Trocar parecerista'}</h2>
+        <p class="field-hint" style="margin-bottom:1rem;">${textoMotivo}</p>
+        ${resumoProcesso}
+        <p class="field-hint" style="margin-bottom:1rem;">
+          ${sugestao ? `Sugestão automática: <strong>${escapeHtml(sugestao.nome)}</strong> — mas você pode escolher outro nome abaixo.` : 'Não há sugestão automática disponível; escolha manualmente.'}
+        </p>
+        ${exigeComissao ? `<p class="field-hint" style="color:var(--brass-dark);margin-bottom:1rem;">Este processo já passou por 2 pareceristas sem retorno. A partir de agora, só membros da <strong>comissão de pesquisa</strong> podem ser indicados.</p>` : ''}
+        ${listaOpcoes ? `
+          <div class="field">
+            <label for="f-novo-parecerista-fase2">Novo parecerista</label>
+            <select id="f-novo-parecerista-fase2">${listaOpcoes}</select>
+            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
+              <button type="button" class="btn-ghost btn-sm" id="nova-sugestao-fase2">↻ Nova sugestão</button>
+            </div>
+            <div style="display:flex;gap:0.5rem;align-items:center;margin-top:0.5rem;">
+              <input id="f-parecerista-fase2-usp" type="text" readonly style="flex:1;background:var(--paper-raised);">
+              <button type="button" class="btn-ghost btn-sm" id="copiar-usp-fase2">Copiar nº USP</button>
+            </div>
+            <p class="field-hint" id="status-usp-fase2"></p>
           </div>
-          <p class="field-hint" id="status-usp-fase2"></p>
-        </div>
-        <div class="field-error" id="err-troca-parecerista"></div>
-        <div class="modal-actions">
-          <button class="btn-ghost" id="cancelar">Cancelar</button>
-          <button class="btn" id="confirmar-troca">Confirmar atribuição</button>
-        </div>
-      ` : `
-        <p class="field-error">${exigeComissao ? 'Não há nenhum membro ativo da comissão de pesquisa disponível para reatribuir este parecer (cadastre ou marque alguém como membro da comissão em "Pareceristas").' : 'Não há nenhum parecerista ativo disponível para reatribuir este parecer (cadastre ou reative alguém em "Pareceristas").'}</p>
-        <div class="modal-actions"><button class="btn-ghost" id="cancelar">Fechar</button></div>
-      `}
-    </div>
-  `;
-  document.getElementById('cancelar').onclick = fecharOverlay;
-  if(listaOpcoes){
-    const atualizarUspFase2 = () => {
-      const id = document.getElementById('f-novo-parecerista-fase2').value;
-      const pessoa = state.pareceristas.find(x=>x.id===id);
-      document.getElementById('f-parecerista-fase2-usp').value = pessoa ? `${pessoa.nome} — nº USP ${pessoa.id}` : '';
-    };
-    document.getElementById('f-novo-parecerista-fase2').onchange = atualizarUspFase2;
-    atualizarUspFase2();
-    document.getElementById('copiar-usp-fase2').onclick = () => {
-      const id = document.getElementById('f-novo-parecerista-fase2').value;
-      const status = document.getElementById('status-usp-fase2');
-      if(!id){ status.textContent = 'Selecione um parecerista primeiro.'; return; }
-      if(navigator.clipboard && navigator.clipboard.writeText){
-        navigator.clipboard.writeText(id)
-          .then(()=>{ status.style.color='var(--green)'; status.textContent = `Nº USP ${id} copiado.`; })
-          .catch(()=>{ status.style.color='var(--ink-soft)'; status.textContent = 'Não foi possível copiar automaticamente — selecione o texto do campo ao lado e copie manualmente.'; });
-      } else {
-        const campo = document.getElementById('f-parecerista-fase2-usp');
-        campo.removeAttribute('readonly');
-        campo.select();
-        status.style.color='var(--ink-soft)';
-        status.textContent = 'Texto selecionado — use Ctrl+C (ou Cmd+C) para copiar.';
-      }
-    };
-  }
-  const btnConfirmar = document.getElementById('confirmar-troca');
-  if(btnConfirmar){
-    btnConfirmar.onclick = () => {
-      const novoId = document.getElementById('f-novo-parecerista-fase2').value;
-      if(!novoId){ document.getElementById('err-troca-parecerista').textContent = 'Selecione um parecerista.'; return; }
-      p.historicoDecisoes.push({ data: todayIso(), fase: p.faseAtual, resultado:'nao_emitido', motivo, parceristaId: parceristaAnteriorId });
-      efetuarReatribuicao(parecerId, novoId);
-      fecharOverlay();
-    };
-  }
+          <div class="field-error" id="err-troca-parecerista"></div>
+          <div class="modal-actions">
+            <button class="btn-ghost" id="cancelar">Cancelar</button>
+            <button class="btn" id="confirmar-troca">Confirmar atribuição</button>
+          </div>
+        ` : `
+          <p class="field-error">${exigeComissao ? 'Não há nenhum membro ativo da comissão de pesquisa disponível para reatribuir este parecer (cadastre ou marque alguém como membro da comissão em "Pareceristas").' : 'Não há nenhum parecerista ativo disponível para reatribuir este parecer (cadastre ou reative alguém em "Pareceristas").'}</p>
+          <div class="modal-actions"><button class="btn-ghost" id="cancelar">Fechar</button></div>
+        `}
+      </div>
+    `;
+    document.getElementById('cancelar').onclick = fecharOverlay;
+    if(listaOpcoes){
+      const atualizarUspFase2 = () => {
+        const id = document.getElementById('f-novo-parecerista-fase2').value;
+        const pessoa = state.pareceristas.find(x=>x.id===id);
+        document.getElementById('f-parecerista-fase2-usp').value = pessoa ? `${pessoa.nome} — nº USP ${pessoa.id}` : '';
+      };
+      document.getElementById('f-novo-parecerista-fase2').onchange = atualizarUspFase2;
+      atualizarUspFase2();
+      document.getElementById('nova-sugestao-fase2').onclick = () => {
+        sugestaoOffset += 1;
+        desenhar();
+      };
+      document.getElementById('copiar-usp-fase2').onclick = () => {
+        const id = document.getElementById('f-novo-parecerista-fase2').value;
+        const status = document.getElementById('status-usp-fase2');
+        if(!id){ status.textContent = 'Selecione um parecerista primeiro.'; return; }
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(id)
+            .then(()=>{ status.style.color='var(--green)'; status.textContent = `Nº USP ${id} copiado.`; })
+            .catch(()=>{ status.style.color='var(--ink-soft)'; status.textContent = 'Não foi possível copiar automaticamente — selecione o texto do campo ao lado e copie manualmente.'; });
+        } else {
+          const campo = document.getElementById('f-parecerista-fase2-usp');
+          campo.removeAttribute('readonly');
+          campo.select();
+          status.style.color='var(--ink-soft)';
+          status.textContent = 'Texto selecionado — use Ctrl+C (ou Cmd+C) para copiar.';
+        }
+      };
+    }
+    const btnConfirmar = document.getElementById('confirmar-troca');
+    if(btnConfirmar){
+      btnConfirmar.onclick = () => {
+        const novoId = document.getElementById('f-novo-parecerista-fase2').value;
+        if(!novoId){ document.getElementById('err-troca-parecerista').textContent = 'Selecione um parecerista.'; return; }
+        p.historicoDecisoes.push({ data: todayIso(), fase: p.faseAtual, resultado:'nao_emitido', motivo, parceristaId: parceristaAnteriorId });
+        efetuarReatribuicao(parecerId, novoId);
+        fecharOverlay();
+      };
+    }
+  };
+
+  desenhar();
 }
 
 function preencherTemplate(template, parecer, novoPrazoOverride){
