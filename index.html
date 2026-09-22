@@ -139,6 +139,18 @@
   .overlay.open{display:flex;}
   .modal{background:var(--paper-raised);border:1px solid var(--line);border-radius:12px;width:100%;max-width:520px;padding:1.75rem;}
   .modal.modal-wide{max-width:820px;}
+
+  @media print{
+    body *{ visibility:hidden; }
+    #impressao-relatorio, #impressao-relatorio *{ visibility:visible; }
+    #impressao-relatorio{ position:absolute; left:0; top:0; width:100%; padding:0.5cm; }
+    .overlay{ position:static !important; background:none !important; padding:0 !important; overflow:visible !important; display:block !important; }
+    .modal{ max-width:100% !important; border:none !important; box-shadow:none !important; padding:0 !important; }
+    .modal-actions, #f-rel-inicio, #f-rel-fim, .field-row, .list-scroll, #gerar-relatorio, .rel-cat-check, .rel-depto-check, #rel-cat-todas, #rel-cat-nenhuma, #rel-depto-todos, #rel-depto-nenhum, #f-texto-relatorio, [data-copiar], #status-relatorio{ display:none !important; }
+    .chart-card{ break-inside:avoid; page-break-inside:avoid; }
+    h3{ break-after:avoid; }
+    .only-print{ display:block !important; margin-bottom:0.6rem; }
+  }
   .modal h2{font-family:'Fraunces', serif;font-weight:600;font-size:1.3rem;margin:0 0 1.2rem;}
   .field{margin-bottom:1rem;}
   .field label{display:block;font-size:0.78rem;color:var(--ink-soft);margin-bottom:0.35rem;}
@@ -3289,6 +3301,8 @@ function abrirModalRelatorio(){
       : departamentosMarcados.join(', ');
 
     resultadoEl.innerHTML = `
+      <div id="impressao-relatorio">
+      <div style="display:none;" class="only-print"><h1 style="font-family:'Fraunces', serif;">Relatório de Pareceres — FZEA/USP</h1></div>
       <div class="field-hint" style="margin:1rem 0;">Período: ${fmtDate(inicio)} a ${fmtDate(fim)} · Categoria: ${escapeHtml(nomesCategorias)} · Departamento: ${escapeHtml(nomesDepartamentos)}</div>
 
       <h3 style="margin-bottom:0.6rem;">Visão geral</h3>
@@ -3318,6 +3332,12 @@ function abrirModalRelatorio(){
           </div>
         ` : ''}
       `).join('')}
+      </div>
+
+      <div class="modal-actions" style="justify-content:flex-start;margin-top:1rem;">
+        <button type="button" class="btn-ghost btn-sm" id="exportar-relatorio-pdf">🖨️ Exportar PDF</button>
+      </div>
+      <p class="field-hint">Abre a caixa de impressão do navegador — escolha "Salvar como PDF" no destino para baixar o arquivo, com os gráficos incluídos.</p>
 
       <div class="field" style="margin-top:1.5rem;">
         <label>Versão em texto (para copiar e colar)</label>
@@ -3355,6 +3375,7 @@ ${x.stats.maisLento ? `Mais lento: nº ${pad(x.stats.maisLento.numero)} — ${nu
       </div>
     `;
     ligarBotoesCopiar(overlay);
+    document.getElementById('exportar-relatorio-pdf').onclick = () => window.print();
 
     if(graficosDisponiveis()){
       const ctxRel = document.getElementById('chart-relatorio-prazo');
