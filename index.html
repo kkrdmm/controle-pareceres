@@ -1025,9 +1025,11 @@ function abrirModalFase1Nao(parecerId, modo){
   const parceristaId = parceristaAtualId(p);
   const somenteLeitura = modo === 'visualizar';
 
-  const prazoCalculado = calcularPrazo(p.dataSolicitacaoAtual, 21);
-  const prazoJaPassou = !somenteLeitura && prazoCalculado < todayIso();
-  const prazoSugerido = prazoJaPassou ? calcularPrazo(todayIso(), 7) : prazoCalculado;
+  // Os "mais 7 dias" sempre contam a partir de HOJE — o dia em que o aviso é de fato enviado —
+  // nunca a partir da solicitação original. Se o envio atrasar, isso evita encurtar o prazo real da pessoa.
+  const prazoCalculadoDaSolicitacao = calcularPrazo(p.dataSolicitacaoAtual, 21);
+  const prazoSugerido = somenteLeitura ? prazoCalculadoDaSolicitacao : calcularPrazo(todayIso(), 7);
+  const envioAtrasado = !somenteLeitura && prazoSugerido !== prazoCalculadoDaSolicitacao;
 
   const rascunho = (somenteLeitura && p.ultimoAvisoEmail) ? p.ultimoAvisoEmail : construirRascunhoAviso(p, prazoSugerido);
 
@@ -1038,11 +1040,11 @@ function abrirModalFase1Nao(parecerId, modo){
       <p class="field-hint" style="margin-bottom:1rem;">
         ${somenteLeitura
           ? `Copie os campos abaixo para colar no seu aplicativo de e-mail, se precisar reenviar o aviso.`
-          : `Copie os campos abaixo e cole no seu aplicativo de e-mail. Ao confirmar, o prazo do parecer nº ${pad(p.numero)} passa para 21 dias no total.`}
+          : `Copie os campos abaixo e cole no seu aplicativo de e-mail. Ao confirmar, o parecerista recebe mais 7 dias úteis a partir de <strong>hoje</strong> (novo prazo: ${fmtDate(prazoSugerido)}).`}
       </p>
-      ${prazoJaPassou ? `
-        <div class="field" style="background:var(--brass-light);border:1px solid var(--brass);border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;">
-          <label style="color:var(--brass-dark);">O prazo calculado automaticamente (${fmtDate(prazoCalculado)}) já passou — provavelmente esse aviso ficou pendente de envio por um tempo. Escolha uma nova data para o prazo final:</label>
+      ${!somenteLeitura ? `
+        <div class="field" style="background:var(--paper-raised);border:1px solid var(--line);border-radius:8px;padding:0.8rem 1rem;margin-bottom:1rem;">
+          <label>Novo prazo final ${envioAtrasado ? '(recalculado a partir de hoje, já que esse aviso está sendo enviado depois do prazo original)' : ''}</label>
           <input id="f-novo-prazo-ajustado" type="date" value="${prazoSugerido}" min="${todayIso()}">
         </div>
       ` : ''}
@@ -1092,7 +1094,7 @@ function abrirModalFase1Nao(parecerId, modo){
       const to = document.getElementById('f-email-to').value.trim();
       const subject = document.getElementById('f-email-subject').value;
       const body = document.getElementById('f-email-body').value;
-      let novoPrazo = prazoCalculado;
+      let novoPrazo = prazoSugerido;
       if(campoDataAjustada){
         const escolhida = campoDataAjustada.value;
         if(!escolhida){ campoDataAjustada.focus(); return; }
