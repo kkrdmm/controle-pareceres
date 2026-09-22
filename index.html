@@ -300,6 +300,7 @@ let ordenacao = { coluna: null, direcao: 'asc' };
 let filtroTextoReciprocidade = '';
 let ordenacaoReciprocidade = { coluna: null, direcao: 'asc' };
 let modalidadeGraficoBolsas = 'PIBIC';
+let anoGraficoBolsas = null;
 let filtroTextoNaoEmitidos = '';
 let ordenacaoNaoEmitidos = { coluna: null, direcao: 'asc' };
 let abaAtual = 'pareceres';
@@ -1488,6 +1489,10 @@ function paginaBolsas(){
   const periodoTexto = anoMin === null ? '' : (anoMin === anoMax
     ? `Dados do ciclo ${anoMin}/${anoMin+1}`
     : `Dados dos ciclos ${anoMin}/${anoMin+1} a ${anoMax}/${anoMax+1}`);
+  const anosDisponiveisBolsas = Array.from(new Set(anosRegistrados)).sort((a,b)=>b-a);
+  if(anoGraficoBolsas === null || !anosDisponiveisBolsas.includes(anoGraficoBolsas)){
+    anoGraficoBolsas = anosDisponiveisBolsas.length ? anosDisponiveisBolsas[0] : null;
+  }
 
   return `
     <div class="actions">
@@ -1519,6 +1524,15 @@ function paginaBolsas(){
           </select>
         </div>
         ${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-por-ano"></canvas></div>` : avisoGraficoIndisponivel()}
+      </div>
+      <div class="chart-card" style="grid-column:1 / -1;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:0.6rem;margin-bottom:0.8rem;">
+          <h3 style="margin:0;">Solicitadas x concedidas por modalidade, num ano</h3>
+          <select id="f-ano-grafico-bolsas" style="width:auto;padding:0.3rem 0.6rem;font-size:0.8rem;">
+            ${anosDisponiveisBolsas.map(a=>`<option value="${a}" ${anoGraficoBolsas===a?'selected':''}>${a}/${a+1}</option>`).join('')}
+          </select>
+        </div>
+        ${graficosDisponiveis() ? `<div style="height:260px;"><canvas id="chart-bolsas-por-modalidade-ano"></canvas></div>` : avisoGraficoIndisponivel()}
       </div>
     </div>
     ` : ''}
@@ -1706,6 +1720,7 @@ function montarGraficosBolsas(){
     if(chartInstances.bolsasModalidade){ chartInstances.bolsasModalidade.destroy(); }
     if(chartInstances.bolsasEvolucao){ chartInstances.bolsasEvolucao.destroy(); }
     if(chartInstances.bolsasPorAno){ chartInstances.bolsasPorAno.destroy(); }
+    if(chartInstances.bolsasPorModalidadeAno){ chartInstances.bolsasPorModalidadeAno.destroy(); }
 
     const porModalidade = {};
     MODALIDADES_BOLSA.forEach(m=> porModalidade[m] = { solicitadas:0, concedidas:0 });
@@ -1773,6 +1788,31 @@ function montarGraficosBolsas(){
           datasets:[
             { label:'Solicitadas', data: registrosModalidade.map(b=>b.solicitadas), backgroundColor:'#1C2B45' },
             { label:'Concedidas', data: registrosModalidade.map(b=>b.concedidas), backgroundColor:'#52734F' }
+          ]
+        },
+        options:{ responsive:true, maintainAspectRatio:false, layout:{ padding:{ top:18 } }, plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } },
+        plugins:[pluginRotulosBarras()]
+      });
+    }
+
+    const seletorAno = document.getElementById('f-ano-grafico-bolsas');
+    if(seletorAno){
+      seletorAno.onchange = (e) => {
+        anoGraficoBolsas = Number(e.target.value);
+        montarGraficosBolsas();
+      };
+    }
+
+    const registrosDoAno = state.bolsas.filter(b=>b.ano === anoGraficoBolsas);
+    const ctxPorModalidadeAno = document.getElementById('chart-bolsas-por-modalidade-ano');
+    if(ctxPorModalidadeAno){
+      chartInstances.bolsasPorModalidadeAno = new Chart(ctxPorModalidadeAno, {
+        type:'bar',
+        data:{
+          labels: MODALIDADES_BOLSA,
+          datasets:[
+            { label:'Solicitadas', data: MODALIDADES_BOLSA.map(m=>{ const r = registrosDoAno.find(b=>b.modalidade===m); return r ? r.solicitadas : 0; }), backgroundColor:'#1C2B45' },
+            { label:'Concedidas', data: MODALIDADES_BOLSA.map(m=>{ const r = registrosDoAno.find(b=>b.modalidade===m); return r ? r.concedidas : 0; }), backgroundColor:'#52734F' }
           ]
         },
         options:{ responsive:true, maintainAspectRatio:false, layout:{ padding:{ top:18 } }, plugins:{ legend:{ display:true, position:'bottom', labels:{ boxWidth:12, font:{ size:11 } } } }, scales:{ y:{ beginAtZero:true, ticks:{ precision:0 } } } },
