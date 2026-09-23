@@ -3491,12 +3491,13 @@ function abrirModalMarcarTrocaSemNome(){
     <div class="modal modal-wide">
       <h2>Marcar troca de parecerista sem nome</h2>
       <p class="field-hint" style="margin-bottom:1rem;">
-        Use quando você sabe (ou desconfia fortemente, por exemplo por um intervalo grande entre a data de solicitação real e a data de conclusão) que um parecer passou por uma troca de parecerista, mas não tem o nome de quem foi substituído.
+        Use quando você sabe (ou desconfia fortemente, por exemplo por um intervalo grande entre a data de solicitação real e a data de conclusão) que um parecer passou por uma ou mais trocas de parecerista, mas não tem o(s) nome(s) de quem foi substituído.
         Isso conta na "Taxa de cobrança/troca de parecerista" dos relatórios, sem atribuir a ocorrência a nenhum parecerista específico na tabela de pendências do Dashboard.
       </p>
       <div class="field">
         <label for="f-numeros-troca">Números de registro</label>
-        <textarea id="f-numeros-troca" rows="6" placeholder="Ex: 260, 301, 307, 309, 310, 311 — ou um por linha"></textarea>
+        <textarea id="f-numeros-troca" rows="6" placeholder="Ex: 260, 301, 307 — ou um por linha"></textarea>
+        <p class="field-hint">Por padrão, cada número marca 1 troca. Para marcar mais de uma troca no mesmo parecer, use "número:quantidade" — ex: <strong>1601:3</strong> marca 3 trocas nesse parecer. Rodar de novo com um número diferente de quantidade ajusta o total (não soma em cima do que já tinha).</p>
       </div>
       <div class="modal-actions" style="justify-content:flex-start;">
         <button class="btn-ghost btn-sm" id="pre-visualizar-troca">Pré-visualizar</button>
@@ -3510,18 +3511,28 @@ function abrirModalMarcarTrocaSemNome(){
   document.getElementById('fechar-troca-sem-nome').onclick = () => { fecharOverlay(); render(); };
   document.getElementById('pre-visualizar-troca').onclick = () => {
     const texto = document.getElementById('f-numeros-troca').value;
-    const numeros = Array.from(new Set(
-      texto.split(/[,;\s]+/).map(s=>s.trim()).filter(Boolean).map(Number).filter(n=>!isNaN(n))
-    ));
+    const entradasMap = new Map();
+    texto.split(/[,;\s]+/).map(s=>s.trim()).filter(Boolean).forEach(tok=>{
+      const m = tok.match(/^(\d+)(?::(\d+))?$/);
+      if(!m) return;
+      const numero = Number(m[1]);
+      const qtd = m[2] ? Number(m[2]) : 1;
+      if(qtd < 1) return;
+      entradasMap.set(numero, qtd); // se repetir, prevalece a última quantidade informada
+    });
     const box = document.getElementById('preview-troca-sem-nome');
-    if(!numeros.length){ box.innerHTML = `<p class="field-error">Cole ao menos um número de registro válido.</p>`; return; }
+    if(!entradasMap.size){ box.innerHTML = `<p class="field-error">Cole ao menos um número de registro válido.</p>`; return; }
 
-    const encontrados = numeros.map(n => state.pareceres.find(p=>p.numero===n)).filter(Boolean);
-    const naoEncontrados = numeros.filter(n => !state.pareceres.some(p=>p.numero===n));
-    const jaMarcados = encontrados.filter(p => p.historicoDecisoes.some(h=>h.motivo==='parecerista_desconhecido'));
-    const aMarcar = encontrados.filter(p => !p.historicoDecisoes.some(h=>h.motivo==='parecerista_desconhecido'));
+    const linhas = Array.from(entradasMap.entries()).map(([numero, qtd]) => {
+      const p = state.pareceres.find(x=>x.numero===numero);
+      const qtdAtual = p ? p.historicoDecisoes.filter(h=>h.motivo==='parecerista_desconhecido').length : 0;
+      return { numero, qtd, p, qtdAtual };
+    });
+    const naoEncontrados = linhas.filter(l=>!l.p).map(l=>l.numero);
+    const semMudanca = linhas.filter(l=>l.p && l.qtdAtual === l.qtd);
+    const aAplicar = linhas.filter(l=>l.p && l.qtdAtual !== l.qtd);
 
-    if(!encontrados.length){
+    if(!linhas.some(l=>l.p)){
       box.innerHTML = `<p class="field-error">Nenhum dos números informados corresponde a um parecer cadastrado.</p>`;
       return;
     }
@@ -3529,21 +3540,24 @@ function abrirModalMarcarTrocaSemNome(){
     box.innerHTML = `
       <div class="rank-table-wrap" style="margin:1rem 0;">
         <table class="rank-table">
-          <thead><tr><th>Nº</th><th>Processo</th><th>Categoria</th><th>Parecerista atual</th></tr></thead>
-          <tbody>${aMarcar.map(p=>`<tr><td>${pad(p.numero)}</td><td>${escapeHtml(numeroProcesso(p))}</td><td>${escapeHtml(labelCategoria(p))}</td><td>${escapeHtml(descricaoResponsavel(p))}</td></tr>`).join('')}</tbody>
+          <thead><tr><th>Nº</th><th>Processo</th><th>Categoria</th><th>Parecerista atual</th><th>Atual</th><th>Novo total</th></tr></thead>
+          <tbody>${aAplicar.map(l=>`<tr><td>${pad(l.p.numero)}</td><td>${escapeHtml(numeroProcesso(l.p))}</td><td>${escapeHtml(labelCategoria(l.p))}</td><td>${escapeHtml(descricaoResponsavel(l.p))}</td><td>${l.qtdAtual}</td><td><strong>${l.qtd}</strong></td></tr>`).join('')}</tbody>
         </table>
       </div>
-      ${jaMarcados.length ? `<p class="field-hint">${jaMarcados.length} já estavam marcados e serão ignorados: nº ${jaMarcados.map(p=>pad(p.numero)).join(', ')}</p>` : ''}
+      ${semMudanca.length ? `<p class="field-hint">${semMudanca.length} já estavam com esse total e serão ignorados: nº ${semMudanca.map(l=>pad(l.numero)).join(', ')}</p>` : ''}
       ${naoEncontrados.length ? `<p class="field-hint">${naoEncontrados.length} número(s) não encontrados e serão ignorados: ${naoEncontrados.join(', ')}</p>` : ''}
-      ${aMarcar.length ? `<button class="btn" id="confirmar-troca-sem-nome">Marcar estes ${aMarcar.length} parecer(es)</button>` : `<p class="field-hint">Nada a fazer — todos já estavam marcados.</p>`}
+      ${aAplicar.length ? `<button class="btn" id="confirmar-troca-sem-nome">Aplicar em ${aAplicar.length} parecer(es)</button>` : `<p class="field-hint">Nada a fazer — todos já estavam com o total certo.</p>`}
     `;
-    if(!aMarcar.length) return;
+    if(!aAplicar.length) return;
     document.getElementById('confirmar-troca-sem-nome').onclick = () => {
-      aMarcar.forEach(p=>{
-        p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', motivo:'parecerista_desconhecido', parceristaId:'desconhecido' });
+      aAplicar.forEach(l=>{
+        l.p.historicoDecisoes = l.p.historicoDecisoes.filter(h=>h.motivo!=='parecerista_desconhecido');
+        for(let i=0;i<l.qtd;i++){
+          l.p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', motivo:'parecerista_desconhecido', parceristaId:'desconhecido' });
+        }
       });
       saveState();
-      flashMsg = `${aMarcar.length} parecer(es) marcado(s) com troca de parecerista sem nome conhecido.`;
+      flashMsg = `${aAplicar.length} parecer(es) atualizado(s) com troca(s) de parecerista sem nome conhecido.`;
       fecharOverlay();
       render();
     };
