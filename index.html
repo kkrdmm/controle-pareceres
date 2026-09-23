@@ -3282,15 +3282,6 @@ function abrirModalRelatorio(){
     const topDeptoSolicitado = Object.entries(porDeptoSolicitado).sort((a,b)=>b[1]-a[1])[0];
     const topDeptoEmitido = Object.entries(porDeptoEmitido).sort((a,b)=>b[1]-a[1])[0];
 
-    // Parecerista que mais emitiu (geral)
-    const porParecerista = {};
-    filtrados.filter(p=>p.dataConclusao).forEach(p=>{
-      const id = parceristaAtualId(p);
-      if(!id) return;
-      porParecerista[id] = (porParecerista[id]||0)+1;
-    });
-    const topParecerista = Object.entries(porParecerista).sort((a,b)=>b[1]-a[1])[0];
-
     // Taxa de incidentes (geral)
     const comIncidente = filtrados.filter(p=>p.historicoDecisoes.some(h=>h.resultado==='nao_emitido'));
     const taxaIncidente = (comIncidente.length / filtrados.length) * 100;
@@ -3318,10 +3309,7 @@ function abrirModalRelatorio(){
         <div class="field" style="margin-bottom:0;"><label>Departamento que mais solicita</label><input type="text" disabled value="${topDeptoSolicitado ? `${topDeptoSolicitado[0]} (${topDeptoSolicitado[1]})` : '—'}"></div>
         <div class="field" style="margin-bottom:0;"><label>Departamento que mais emite</label><input type="text" disabled value="${topDeptoEmitido ? `${topDeptoEmitido[0]} (${topDeptoEmitido[1]})` : '—'}"></div>
       </div>
-      <div class="field-row" style="margin-bottom:1.5rem;">
-        <div class="field" style="margin-bottom:0;"><label>Parecerista que mais emitiu</label><input type="text" disabled value="${topParecerista ? `${nomeParecerista(topParecerista[0])} (${topParecerista[1]})` : '—'}"></div>
-        <div class="field" style="margin-bottom:0;"><label>Taxa de cobrança/troca de parecerista</label><input type="text" disabled value="${comIncidente.length} de ${filtrados.length} (${taxaIncidente.toFixed(1)}%)"></div>
-      </div>
+      <div class="field" style="margin-bottom:1.5rem;"><label>Taxa de cobrança/troca de parecerista</label><input type="text" disabled value="${comIncidente.length} de ${filtrados.length} (${taxaIncidente.toFixed(1)}%)"></div>
 
       ${statsPorCategoria.map(x=>`
         <h3 style="margin-bottom:0.6rem;border-top:1px solid var(--line);padding-top:1.2rem;">${escapeHtml(x.label)}</h3>
@@ -3358,7 +3346,6 @@ ${statsGeral.maisRapido ? `Mais rápido: nº ${pad(statsGeral.maisRapido.numero)
 ${statsGeral.maisLento ? `Mais lento: nº ${pad(statsGeral.maisLento.numero)} — ${numeroProcesso(statsGeral.maisLento)} — ${statsGeral.diasDe(statsGeral.maisLento)} dia(s)` : ''}
 Departamento que mais solicita: ${topDeptoSolicitado ? `${topDeptoSolicitado[0]} (${topDeptoSolicitado[1]})` : '—'}
 Departamento que mais emite: ${topDeptoEmitido ? `${topDeptoEmitido[0]} (${topDeptoEmitido[1]})` : '—'}
-Parecerista que mais emitiu: ${topParecerista ? `${nomeParecerista(topParecerista[0])} (${topParecerista[1]})` : '—'}
 Taxa de cobrança/troca de parecerista: ${comIncidente.length} de ${filtrados.length} (${taxaIncidente.toFixed(1)}%)
 
 ${statsPorCategoria.map(x=>
