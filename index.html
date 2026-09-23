@@ -3266,11 +3266,15 @@ function abrirModalRelatorio(){
     }
 
     const statsGeral = statsPareceres(filtrados, BENCHMARK_DIAS);
+    const calcularIncidente = (lista) => {
+      const com = lista.filter(p=>p.historicoDecisoes.some(h=>h.resultado==='nao_emitido'));
+      return { comIncidente: com, taxa: lista.length ? (com.length/lista.length*100) : 0 };
+    };
     const statsPorCategoria = CATEGORIAS_PARECER
       .filter(c=>categoriasMarcadas.includes(c.id))
       .map(c=>({ id:c.id, label:c.label, lista: filtrados.filter(p=>p.categoriaParecer===c.id) }))
       .filter(x=>x.lista.length)
-      .map(x=>({ ...x, stats: statsPareceres(x.lista, BENCHMARK_DIAS), porTipo: statsPorTipoRelatorio(x.lista, BENCHMARK_DIAS) }));
+      .map(x=>({ ...x, stats: statsPareceres(x.lista, BENCHMARK_DIAS), porTipo: statsPorTipoRelatorio(x.lista, BENCHMARK_DIAS), incidente: calcularIncidente(x.lista) }));
 
     // Departamento que mais solicita x mais emite (geral)
     const porDeptoSolicitado = {};
@@ -3317,6 +3321,7 @@ function abrirModalRelatorio(){
         <h3 style="margin-bottom:0.6rem;border-top:1px solid var(--line);padding-top:1.2rem;">${escapeHtml(x.label)}</h3>
         ${cardsResumoRelatorio(x.stats, BENCHMARK_DIAS)}
         ${extremosRelatorio(x.stats)}
+        <div class="field" style="margin-bottom:1rem;"><label>Taxa de cobrança/troca de parecerista</label><input type="text" disabled value="${x.incidente.comIncidente.length} de ${x.lista.length} (${x.incidente.taxa.toFixed(1)}%)"></div>
         ${x.porTipo.length ? `
           <div class="chart-card" style="margin-bottom:1.2rem;">
             <h3 style="margin-bottom:0.2rem;">Prazo esperado (${BENCHMARK_DIAS}d) x tempo médio real, por tipo de parecer</h3>
@@ -3357,6 +3362,7 @@ Dentro do prazo esperado: ${x.stats.pctDentroPrazo!==null ? x.stats.pctDentroPra
 Tempo médio: ${x.stats.mediaDias!==null ? x.stats.mediaDias.toFixed(1)+' dias' : '—'} (esperado ${BENCHMARK_DIAS})
 ${x.stats.maisRapido ? `Mais rápido: nº ${pad(x.stats.maisRapido.numero)} — ${numeroProcesso(x.stats.maisRapido)} — ${x.stats.diasDe(x.stats.maisRapido)} dia(s)` : ''}
 ${x.stats.maisLento ? `Mais lento: nº ${pad(x.stats.maisLento.numero)} — ${numeroProcesso(x.stats.maisLento)} — ${x.stats.diasDe(x.stats.maisLento)} dia(s)` : ''}
+Taxa de cobrança/troca de parecerista: ${x.incidente.comIncidente.length} de ${x.lista.length} (${x.incidente.taxa.toFixed(1)}%)
 `).join('\n')}`
         )}</textarea>
         <div style="display:flex;justify-content:flex-end;margin-top:0.4rem;">
