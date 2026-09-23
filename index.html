@@ -141,12 +141,12 @@
   .modal.modal-wide{max-width:820px;}
 
   @media print{
-    body *{ visibility:hidden; }
-    #impressao-relatorio, #impressao-relatorio *{ visibility:visible; }
-    #impressao-relatorio{ position:absolute; left:0; top:0; width:100%; padding:0.5cm; }
+    #app{ display:none !important; }
     .overlay{ position:static !important; background:none !important; padding:0 !important; overflow:visible !important; display:block !important; }
     .modal{ max-width:100% !important; border:none !important; box-shadow:none !important; padding:0 !important; }
-    .modal-actions, #f-rel-inicio, #f-rel-fim, .field-row, .list-scroll, #gerar-relatorio, .rel-cat-check, .rel-depto-check, #rel-cat-todas, #rel-cat-nenhuma, #rel-depto-todos, #rel-depto-nenhum, #f-texto-relatorio, [data-copiar], #status-relatorio{ display:none !important; }
+    .modal > *:not(#resultado-relatorio){ display:none !important; }
+    #resultado-relatorio > *:not(#impressao-relatorio){ display:none !important; }
+    #impressao-relatorio{ position:static !important; width:100%; padding:0.5cm; }
     .chart-card{ break-inside:avoid; page-break-inside:avoid; }
     h3{ break-after:avoid; }
     .only-print{ display:block !important; margin-bottom:0.6rem; }
