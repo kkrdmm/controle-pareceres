@@ -1232,6 +1232,7 @@ function render(){
     document.getElementById('btn-declaracao').onclick = abrirModalDeclaracao;
     document.getElementById('btn-relatorio').onclick = abrirModalRelatorio;
     document.getElementById('btn-importar-pareceres').onclick = abrirModalImportarPareceres;
+    document.getElementById('btn-exclusao-massa').onclick = abrirModalExclusaoMassa;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
@@ -1361,6 +1362,7 @@ function paginaPareceres(lista){
       <button class="btn-ghost" id="btn-declaracao">Declarações</button>
       <button class="btn-ghost" id="btn-relatorio">Relatórios</button>
       <button class="btn-ghost" id="btn-importar-pareceres">Importar pareceres</button>
+      <button class="btn-ghost" id="btn-exclusao-massa">Excluir em massa</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
     <div class="filters" style="align-items:center;">
@@ -3428,6 +3430,65 @@ ${x.stats.maisLento ? `Mais lento: nº ${pad(x.stats.maisLento.numero)} — ${nu
 
 
 /* ---------- Importação de pareceres em massa ---------- */
+
+/* ---------- Exclusão em massa ---------- */
+
+function abrirModalExclusaoMassa(){
+  const overlay = criarOverlay();
+  overlay.innerHTML = `
+    <div class="modal modal-wide">
+      <h2>Excluir pareceres em massa</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">Cole os números de registro (o "Nº" que aparece na tabela de pareceres), separados por vírgula, espaço ou quebra de linha. Útil, por exemplo, para remover um lote importado com erro antes de reimportar a versão corrigida.</p>
+      <div class="field">
+        <label for="f-numeros-excluir">Números de registro</label>
+        <textarea id="f-numeros-excluir" rows="6" placeholder="Ex: 240, 241, 242 — ou um por linha"></textarea>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn-ghost btn-sm" id="pre-visualizar-exclusao">Pré-visualizar</button>
+      </div>
+      <div id="preview-exclusao-massa"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="fechar-exclusao-massa">Fechar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('fechar-exclusao-massa').onclick = () => { fecharOverlay(); render(); };
+  document.getElementById('pre-visualizar-exclusao').onclick = () => {
+    const texto = document.getElementById('f-numeros-excluir').value;
+    const numeros = Array.from(new Set(
+      texto.split(/[,;\s]+/).map(s=>s.trim()).filter(Boolean).map(Number).filter(n=>!isNaN(n))
+    ));
+    const box = document.getElementById('preview-exclusao-massa');
+    if(!numeros.length){ box.innerHTML = `<p class="field-error">Cole ao menos um número de registro válido.</p>`; return; }
+
+    const encontrados = numeros.map(n => state.pareceres.find(p=>p.numero===n)).filter(Boolean);
+    const naoEncontrados = numeros.filter(n => !state.pareceres.some(p=>p.numero===n));
+
+    if(!encontrados.length){
+      box.innerHTML = `<p class="field-error">Nenhum dos números informados corresponde a um parecer cadastrado.</p>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="rank-table-wrap" style="margin:1rem 0;">
+        <table class="rank-table">
+          <thead><tr><th>Nº</th><th>Processo</th><th>Categoria</th><th>Parecerista</th></tr></thead>
+          <tbody>${encontrados.map(p=>`<tr><td>${pad(p.numero)}</td><td>${escapeHtml(numeroProcesso(p))}</td><td>${escapeHtml(labelCategoria(p))}</td><td>${escapeHtml(descricaoResponsavel(p))}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      ${naoEncontrados.length ? `<p class="field-hint">${naoEncontrados.length} número(s) não encontrados e serão ignorados: ${naoEncontrados.join(', ')}</p>` : ''}
+      <button class="btn" id="confirmar-exclusao-massa" style="background:var(--red);border-color:var(--red);">Excluir estes ${encontrados.length} parecer(es) definitivamente</button>
+    `;
+    document.getElementById('confirmar-exclusao-massa').onclick = () => {
+      const idsExcluir = new Set(encontrados.map(p=>p.id));
+      state.pareceres = state.pareceres.filter(p=>!idsExcluir.has(p.id));
+      saveState();
+      flashMsg = `${encontrados.length} parecer(es) excluído(s).`;
+      fecharOverlay();
+      render();
+    };
+  };
+}
 
 function abrirModalImportarPareceres(){
   const overlay = criarOverlay();
