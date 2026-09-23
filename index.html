@@ -1233,6 +1233,7 @@ function render(){
     document.getElementById('btn-relatorio').onclick = abrirModalRelatorio;
     document.getElementById('btn-importar-pareceres').onclick = abrirModalImportarPareceres;
     document.getElementById('btn-exclusao-massa').onclick = abrirModalExclusaoMassa;
+    document.getElementById('btn-marcar-troca-sem-nome').onclick = abrirModalMarcarTrocaSemNome;
     document.getElementById('btn-sincronizacao').onclick = abrirModalSincronizacao;
     document.querySelectorAll('.filter-chip').forEach(el=>{ el.onclick = () => { filtro = el.dataset.filtro; render(); }; });
     document.querySelectorAll('[data-excluir]').forEach(el=>{ el.onclick = () => excluirParecer(el.dataset.excluir); });
@@ -1363,6 +1364,7 @@ function paginaPareceres(lista){
       <button class="btn-ghost" id="btn-relatorio">Relatórios</button>
       <button class="btn-ghost" id="btn-importar-pareceres">Importar pareceres</button>
       <button class="btn-ghost" id="btn-exclusao-massa">Excluir em massa</button>
+      <button class="btn-ghost" id="btn-marcar-troca-sem-nome">Marcar troca sem nome</button>
       <button class="btn-ghost" id="btn-sincronizacao">Backup e sincronização</button>
     </div>
     <div class="filters" style="align-items:center;">
@@ -3471,6 +3473,71 @@ function abrirModalExclusaoMassa(){
       state.pareceres = state.pareceres.filter(p=>!idsExcluir.has(p.id));
       saveState();
       flashMsg = `${encontrados.length} parecer(es) excluído(s).`;
+      fecharOverlay();
+      render();
+    };
+  };
+}
+
+function abrirModalMarcarTrocaSemNome(){
+  const overlay = criarOverlay();
+  overlay.innerHTML = `
+    <div class="modal modal-wide">
+      <h2>Marcar troca de parecerista sem nome</h2>
+      <p class="field-hint" style="margin-bottom:1rem;">
+        Use quando você sabe (ou desconfia fortemente, por exemplo por um intervalo grande entre a data de solicitação real e a data de conclusão) que um parecer passou por uma troca de parecerista, mas não tem o nome de quem foi substituído.
+        Isso conta na "Taxa de cobrança/troca de parecerista" dos relatórios, sem atribuir a ocorrência a nenhum parecerista específico na tabela de pendências do Dashboard.
+      </p>
+      <div class="field">
+        <label for="f-numeros-troca">Números de registro</label>
+        <textarea id="f-numeros-troca" rows="6" placeholder="Ex: 260, 301, 307, 309, 310, 311 — ou um por linha"></textarea>
+      </div>
+      <div class="modal-actions" style="justify-content:flex-start;">
+        <button class="btn-ghost btn-sm" id="pre-visualizar-troca">Pré-visualizar</button>
+      </div>
+      <div id="preview-troca-sem-nome"></div>
+      <div class="modal-actions">
+        <button class="btn-ghost" id="fechar-troca-sem-nome">Fechar</button>
+      </div>
+    </div>
+  `;
+  document.getElementById('fechar-troca-sem-nome').onclick = () => { fecharOverlay(); render(); };
+  document.getElementById('pre-visualizar-troca').onclick = () => {
+    const texto = document.getElementById('f-numeros-troca').value;
+    const numeros = Array.from(new Set(
+      texto.split(/[,;\s]+/).map(s=>s.trim()).filter(Boolean).map(Number).filter(n=>!isNaN(n))
+    ));
+    const box = document.getElementById('preview-troca-sem-nome');
+    if(!numeros.length){ box.innerHTML = `<p class="field-error">Cole ao menos um número de registro válido.</p>`; return; }
+
+    const encontrados = numeros.map(n => state.pareceres.find(p=>p.numero===n)).filter(Boolean);
+    const naoEncontrados = numeros.filter(n => !state.pareceres.some(p=>p.numero===n));
+    const jaMarcados = encontrados.filter(p => p.historicoDecisoes.some(h=>h.motivo==='parecerista_desconhecido'));
+    const aMarcar = encontrados.filter(p => !p.historicoDecisoes.some(h=>h.motivo==='parecerista_desconhecido'));
+
+    if(!encontrados.length){
+      box.innerHTML = `<p class="field-error">Nenhum dos números informados corresponde a um parecer cadastrado.</p>`;
+      return;
+    }
+
+    box.innerHTML = `
+      <div class="rank-table-wrap" style="margin:1rem 0;">
+        <table class="rank-table">
+          <thead><tr><th>Nº</th><th>Processo</th><th>Categoria</th><th>Parecerista atual</th></tr></thead>
+          <tbody>${aMarcar.map(p=>`<tr><td>${pad(p.numero)}</td><td>${escapeHtml(numeroProcesso(p))}</td><td>${escapeHtml(labelCategoria(p))}</td><td>${escapeHtml(descricaoResponsavel(p))}</td></tr>`).join('')}</tbody>
+        </table>
+      </div>
+      ${jaMarcados.length ? `<p class="field-hint">${jaMarcados.length} já estavam marcados e serão ignorados: nº ${jaMarcados.map(p=>pad(p.numero)).join(', ')}</p>` : ''}
+      ${naoEncontrados.length ? `<p class="field-hint">${naoEncontrados.length} número(s) não encontrados e serão ignorados: ${naoEncontrados.join(', ')}</p>` : ''}
+      ${aMarcar.length ? `<button class="btn" id="confirmar-troca-sem-nome">Marcar estes ${aMarcar.length} parecer(es)</button>` : `<p class="field-hint">Nada a fazer — todos já estavam marcados.</p>`}
+    `;
+    if(!aMarcar.length) return;
+    document.getElementById('confirmar-troca-sem-nome').onclick = () => {
+      aMarcar.forEach(p=>{
+        p.historicoDecisoes.push({ data: todayIso(), fase:1, resultado:'nao_emitido', motivo:'parecerista_desconhecido', parceristaId:'desconhecido' });
+      });
+      saveState();
+      flashMsg = `${aMarcar.length} parecer(es) marcado(s) com troca de parecerista sem nome conhecido.`;
       fecharOverlay();
       render();
     };
